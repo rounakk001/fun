@@ -414,10 +414,10 @@ function Watch() {
                   {video.isPremium && (
                     <span
                       className="watch-premium-badge"
-                      title="Premium exclusive video"
-                      aria-label="Premium exclusive"
+                      title="VIP Vault exclusive video"
+                      aria-label="VIP Vault exclusive"
                     >
-                      👑 VIP
+                      👑 VIP Vault
                     </span>
                   )}
                   {video.title}

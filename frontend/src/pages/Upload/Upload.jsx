@@ -22,7 +22,7 @@ function Upload() {
   // ── Form state ────────────────────────────────────────────────
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [isPremium, setIsPremium] = useState(isInitiallyPremium);
+  const isPremium = isInitiallyPremium;
   const [videoFile, setVideoFile] = useState(null);
   const [thumbnailFile, setThumbnailFile] = useState(null);
   const [thumbnailPreview, setThumbnailPreview] = useState(null);
@@ -343,36 +343,30 @@ function Upload() {
                 </div>
               )}
 
-              {/* ── Premium Video Toggle ────────────────────────────── */}
-              <div style={{
-                background: isPremium ? 'rgba(245, 197, 24, 0.12)' : 'rgba(255, 255, 255, 0.04)',
-                border: isPremium ? '1.5px solid rgba(245, 197, 24, 0.5)' : '1px solid rgba(255, 255, 255, 0.1)',
-                borderRadius: '12px',
-                padding: '1rem 1.25rem',
-                margin: '1.5rem 0',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '1rem',
-                transition: 'all 0.2s ease'
-              }}>
-                <input
-                  type="checkbox"
-                  id="premium-toggle"
-                  checked={isPremium}
-                  onChange={(e) => setIsPremium(e.target.checked)}
-                  style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: '#f5c518' }}
-                />
-                <label htmlFor="premium-toggle" style={{ cursor: 'pointer', flex: 1 }}>
-                  <div style={{ fontWeight: 600, color: isPremium ? '#f5c518' : '#fff', fontSize: '0.98rem' }}>
-                    👑 Upload as Exclusive Premium Video
+              {/* ── VIP Vault Badge (Only visible when uploading via VIP Vault) ── */}
+              {isPremium && (
+                <div style={{
+                  background: 'linear-gradient(135deg, rgba(245, 197, 24, 0.12) 0%, rgba(20, 20, 20, 0.6) 100%)',
+                  border: '1.5px solid rgba(245, 197, 24, 0.45)',
+                  borderRadius: '12px',
+                  padding: '1rem 1.25rem',
+                  margin: '1.5rem 0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
+                }}>
+                  <span style={{ fontSize: '1.5rem' }}>👑</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, color: '#f5c518', fontSize: '0.98rem', letterSpacing: '0.02em' }}>
+                      Publishing to VIP Vault
+                    </div>
+                    <div style={{ fontSize: '0.82rem', color: '#aaa', marginTop: '0.2rem' }}>
+                      This video is protected and will only appear inside the secret VIP Vault. It is strictly hidden from the public home feed.
+                    </div>
                   </div>
-                  <div style={{ fontSize: '0.82rem', color: '#888', marginTop: '0.2rem' }}>
-                    {isPremium
-                      ? '✓ This video will ONLY be visible in the VIP Premium Lounge and strictly hidden from the public home feed.'
-                      : 'Unchecked: This video will be visible to everyone on the public home feed.'}
-                  </div>
-                </label>
-              </div>
+                </div>
+              )}
 
               {/* ── Submit ─────────────────────────────────── */}
               <div className="upload-actions">

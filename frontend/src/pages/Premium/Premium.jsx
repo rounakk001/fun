@@ -113,9 +113,9 @@ function Premium() {
                 <div className="premium-lock__icon-wrap">
                   <span>👑</span>
                 </div>
-                <h1 className="premium-lock__title">Yeonix VIP Lounge</h1>
+                <h1 className="premium-lock__title">Yeonix VIP Vault</h1>
                 <p className="premium-lock__desc">
-                  This section contains exclusive premium videos. Enter your secret VIP access code to unlock.
+                  Exclusive vault for private releases. Enter your secret VIP passcode to unlock access.
                 </p>
 
                 <form onSubmit={handleUnlock} className="premium-lock__form">
@@ -123,7 +123,7 @@ function Premium() {
                     <input
                       type="password"
                       className="premium-input"
-                      placeholder="ENTER ACCESS CODE"
+                      placeholder="ENTER VIP PASSCODE"
                       value={code}
                       onChange={(e) => {
                         setCode(e.target.value);
@@ -140,7 +140,7 @@ function Premium() {
                   )}
 
                   <button type="submit" className="btn-unlock" disabled={isSubmitting}>
-                    {isSubmitting ? 'Verifying...' : 'Unlock Premium Access 🔓'}
+                    {isSubmitting ? 'Authenticating...' : 'Unlock VIP Vault ✦'}
                   </button>
                 </form>
               </div>
@@ -152,20 +152,20 @@ function Premium() {
               <div className="premium-hero">
                 <div>
                   <div className="premium-hero__badge">
-                    <span>👑</span> VIP Unlocked
+                    <span>👑</span> Vault Unlocked
                   </div>
-                  <h1 className="premium-hero__title">Exclusive Premium Lounge</h1>
+                  <h1 className="premium-hero__title">Yeonix VIP Vault</h1>
                   <p className="premium-hero__subtitle">
-                    Private vault for exclusive creator content. Videos uploaded here are isolated and never appear in the public home feed.
+                    Private vault for exclusive creator content. Videos published here are strictly isolated and never appear in the public home feed.
                   </p>
                 </div>
 
                 <div className="premium-hero__actions">
                   <Link to="/upload?premium=true" className="btn-premium-upload">
-                    <span>⭐</span> Upload Premium Video
+                    <span>✦</span> Upload to Vault
                   </Link>
-                  <button onClick={handleLock} className="btn-lock" title="Lock the premium section">
-                    🔒 Lock Lounge
+                  <button onClick={handleLock} className="btn-lock" title="Lock the VIP vault">
+                    🔒 Lock Vault
                   </button>
                 </div>
               </div>
@@ -177,7 +177,7 @@ function Premium() {
                 isLoadingMore={isLoadingMore}
                 hasNextPage={hasNextPage}
                 onLoadMore={handleLoadMore}
-                emptyMessage="No premium videos uploaded yet. Be the first to share exclusive VIP content!"
+                emptyMessage="No vault videos yet. Be the first to publish exclusive VIP content!"
               />
             </div>
           )}

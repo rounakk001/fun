@@ -32,7 +32,7 @@ function Sidebar({ isOpen, onClose }) {
     },
     {
       id: 'nav-premium',
-      label: '👑 VIP Premium',
+      label: '👑 VIP Vault',
       to: '/premium',
       icon: CrownIcon,
       enabled: true,
