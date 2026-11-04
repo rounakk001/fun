@@ -65,3 +65,11 @@ export const uploadVideo = (formData, onProgress) => {
 export const updateVideo = (videoId, formData) => {
   return axiosInstance.patch(`/videos/${videoId}`, formData);
 };
+
+/**
+ * Verify premium access passcode to unlock the VIP section.
+ * @param {string} code
+ */
+export const verifyPremiumAccessCode = (code) => {
+  return axiosInstance.post('/videos/verify-premium-code', { code });
+};

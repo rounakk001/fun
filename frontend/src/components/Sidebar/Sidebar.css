@@ -53,6 +53,27 @@
 
 /* ── Nav list ─────────────────────────────────────────────────── */
 
+#nav-premium {
+  color: #f5c518;
+  font-weight: 600;
+  border: 1px solid rgba(245, 197, 24, 0.25);
+  border-radius: 10px;
+  background: rgba(245, 197, 24, 0.05);
+  margin: 4px 0;
+  transition: all 0.2s ease;
+}
+
+#nav-premium:hover {
+  background: rgba(245, 197, 24, 0.15);
+  border-color: rgba(245, 197, 24, 0.5);
+  box-shadow: 0 0 12px rgba(245, 197, 24, 0.2);
+}
+
+#nav-premium.sidebar__nav-item--active {
+  background: linear-gradient(90deg, rgba(245, 197, 24, 0.25) 0%, rgba(245, 197, 24, 0.08) 100%);
+  border-color: #f5c518;
+}
+
 .sidebar__nav {
   display: flex;
   flex-direction: column;

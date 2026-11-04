@@ -7,8 +7,13 @@ import { mlClient } from "../utils/mlClient.js";
 /**
  * Helper to hydrate an array of { video_id, score, ... } items from ML into full Video docs,
  * preserving the exact ranking order returned by the ML model.
+ *
+ * @param {Array}   recItems  - Array of { video_id, score, algorithm } from ML service
+ * @param {string}  excludeId - videoId to exclude (the currently-playing video)
+ * @param {boolean} isPremium - true  → only return premium videos
+ *                              false → only return non-premium videos (default)
  */
-async function hydrateRecommendations(recItems, excludeId = null) {
+async function hydrateRecommendations(recItems, excludeId = null, isPremium = false) {
   if (!recItems || recItems.length === 0) return [];
 
   const rawIds = recItems.map((r) => r.video_id).filter((id) => id !== excludeId);
@@ -18,9 +23,13 @@ async function hydrateRecommendations(recItems, excludeId = null) {
 
   if (objectIds.length === 0) return [];
 
+  // Strict separation: premium watch page only gets premium, normal gets non-premium
+  const premiumFilter = isPremium ? { isPremium: true } : { isPremium: { $ne: true } };
+
   const videos = await Video.find({
     _id: { $in: objectIds },
-    isPublished: true
+    isPublished: true,
+    ...premiumFilter
   }).populate("owner", "fullName username avatar");
 
   const videoMap = new Map(videos.map((v) => [v._id.toString(), v]));
@@ -41,10 +50,15 @@ async function hydrateRecommendations(recItems, excludeId = null) {
 }
 
 /**
- * Fallback: Get recent published videos directly from MongoDB
+ * Fallback: Get recent published videos directly from MongoDB.
+ *
+ * @param {number}  limit     - Max videos to return
+ * @param {string}  excludeId - videoId to exclude
+ * @param {boolean} isPremium - true → premium only, false → non-premium only
  */
-async function getFallbackVideos(limit = 10, excludeId = null) {
-  const query = { isPublished: true };
+async function getFallbackVideos(limit = 10, excludeId = null, isPremium = false) {
+  const premiumFilter = isPremium ? { isPremium: true } : { isPremium: { $ne: true } };
+  const query = { isPublished: true, ...premiumFilter };
   if (excludeId && mongoose.Types.ObjectId.isValid(excludeId)) {
     query._id = { $ne: new mongoose.Types.ObjectId(excludeId) };
   }
@@ -60,6 +74,10 @@ export const getSimilarVideos = asyncHandler(async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 10, 50);
   const userId = req.user?._id?.toString() || null;
 
+  // isPremium=true → watch page is in premium context, only recommend premium videos
+  // isPremium=false/absent → normal watch page, only recommend non-premium videos
+  const isPremium = req.query.isPremium === "true";
+
   // 1. Query ML recommendation service
   const mlRes = await mlClient.getSimilarVideos(videoId, userId, limit);
 
@@ -67,7 +85,7 @@ export const getSimilarVideos = asyncHandler(async (req, res) => {
   let strategy = "mongodb_fallback";
 
   if (mlRes && mlRes.recommendations && mlRes.recommendations.length > 0) {
-    recommendations = await hydrateRecommendations(mlRes.recommendations, videoId);
+    recommendations = await hydrateRecommendations(mlRes.recommendations, videoId, isPremium);
     strategy = mlRes.strategy || "hybrid_ml";
   }
 
@@ -76,7 +94,7 @@ export const getSimilarVideos = asyncHandler(async (req, res) => {
     const existingIds = new Set(recommendations.map((v) => v._id.toString()));
     existingIds.add(videoId);
 
-    const fallbacks = await getFallbackVideos(limit, videoId);
+    const fallbacks = await getFallbackVideos(limit, videoId, isPremium);
     for (const f of fallbacks) {
       if (!existingIds.has(f._id.toString()) && recommendations.length < limit) {
         recommendations.push(f);

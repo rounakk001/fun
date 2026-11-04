@@ -1,0 +1,253 @@
+/* ==========================================================================
+   Premium Page Styles — Luxury Gold & Dark Theme
+   ========================================================================== */
+
+.premium-root {
+  min-height: 100vh;
+  background-color: var(--color-bg, #0f0f0f);
+  color: var(--color-text-primary, #f1f1f1);
+  display: flex;
+  flex-direction: column;
+}
+
+.premium-layout {
+  display: flex;
+  flex: 1;
+  position: relative;
+}
+
+.premium-content {
+  flex: 1;
+  padding: 1.5rem;
+  max-width: 1600px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ── Hero Banner ────────────────────────────────────────────────────────── */
+.premium-hero {
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.15) 0%, rgba(26, 26, 26, 0.95) 100%);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 16px;
+  padding: 2rem 2.5rem;
+  margin-bottom: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 0 16px rgba(212, 175, 55, 0.08);
+}
+
+.premium-hero__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(212, 175, 55, 0.2);
+  color: #f5c518;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  padding: 0.35rem 0.85rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.75rem;
+}
+
+.premium-hero__title {
+  font-size: 2.2rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem 0;
+  background: linear-gradient(90deg, #ffffff 0%, #f5c518 50%, #e6a817 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.premium-hero__subtitle {
+  color: #a0a0a0;
+  font-size: 1rem;
+  margin: 0;
+  max-width: 600px;
+  line-height: 1.5;
+}
+
+.premium-hero__actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.btn-premium-upload {
+  background: linear-gradient(135deg, #f5c518 0%, #e6a817 100%);
+  color: #000;
+  font-weight: 700;
+  padding: 0.85rem 1.6rem;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 16px rgba(245, 197, 24, 0.3);
+  text-decoration: none;
+}
+
+.btn-premium-upload:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(245, 197, 24, 0.5);
+}
+
+.btn-lock {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ccc;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 0.85rem 1.25rem;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+.btn-lock:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+/* ── Lock Screen (When code not entered) ────────────────────────────────── */
+.premium-lock-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 120px);
+  padding: 2rem;
+}
+
+.premium-lock-card {
+  background: #181818;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 20px;
+  padding: 3rem 2.5rem;
+  width: 100%;
+  max-width: 460px;
+  text-align: center;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 32px rgba(212, 175, 55, 0.1);
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.premium-lock__icon-wrap {
+  width: 80px;
+  height: 80px;
+  background: linear-gradient(135deg, rgba(245, 197, 24, 0.2) 0%, rgba(212, 175, 55, 0.05) 100%);
+  border: 2px solid rgba(245, 197, 24, 0.4);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1.5rem auto;
+  font-size: 2.2rem;
+  box-shadow: 0 0 24px rgba(245, 197, 24, 0.2);
+}
+
+.premium-lock__title {
+  font-size: 1.8rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem 0;
+  color: #ffffff;
+}
+
+.premium-lock__desc {
+  color: #999;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 0 0 2rem 0;
+}
+
+.premium-lock__form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.premium-input-wrap {
+  position: relative;
+}
+
+.premium-input {
+  width: 100%;
+  background: #0f0f0f;
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 0.9rem 1.2rem;
+  color: #fff;
+  font-size: 1.1rem;
+  letter-spacing: 0.15em;
+  text-align: center;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.premium-input:focus {
+  border-color: #f5c518;
+  box-shadow: 0 0 12px rgba(245, 197, 24, 0.25);
+}
+
+.premium-lock__error {
+  color: #ff5252;
+  font-size: 0.88rem;
+  margin: -0.5rem 0 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.btn-unlock {
+  background: linear-gradient(135deg, #f5c518 0%, #e6a817 100%);
+  color: #000;
+  border: none;
+  border-radius: 12px;
+  padding: 0.95rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 16px rgba(245, 197, 24, 0.25);
+}
+
+.btn-unlock:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(245, 197, 24, 0.4);
+}
+
+.btn-unlock:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── Empty State ────────────────────────────────────────────────────────── */
+.premium-empty {
+  text-align: center;
+  padding: 4rem 1rem;
+  color: #888;
+}
+
+.premium-empty__icon {
+  font-size: 3.5rem;
+  margin-bottom: 1rem;
+  display: block;
+}
+
+.premium-empty__text {
+  font-size: 1.15rem;
+  margin-bottom: 1.5rem;
+  color: #ccc;
+}

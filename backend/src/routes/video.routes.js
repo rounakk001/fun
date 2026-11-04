@@ -6,6 +6,7 @@ import {
     publishAVideo,
     togglePublishStatus,
     updateVideo,
+    verifyPremiumCode,
 } from "../controllers/video.controller.js"
 import {verifyJWT, verifyJWTOptional} from "../middlewares/auth.middleware.js"
 import {upload} from "../middlewares/multer.middleware.js"
@@ -23,6 +24,8 @@ router
         ]),
         publishAVideo
     );
+
+router.route("/verify-premium-code").post(verifyJWTOptional, verifyPremiumCode);
 
 router
     .route("/:videoId")

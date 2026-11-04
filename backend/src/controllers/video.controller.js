@@ -8,10 +8,17 @@ import {uploadOnCloudinary} from "../utils/cloudinary.js"
 
 
 const getAllVideos = asyncHandler(async (req, res) => {
-    const { page = 1, limit = 10, query, sortBy, sortType, userId } = req.query
+    const { page = 1, limit = 10, query, sortBy, sortType, userId, isPremium } = req.query
 
     const matchStage = {
         isPublished: true
+    }
+
+    // Strict separation: Premium section vs Normal Home feed
+    if (isPremium === "true" || isPremium === true) {
+        matchStage.isPremium = true
+    } else {
+        matchStage.isPremium = { $ne: true }
     }
 
     if (query) {
@@ -61,7 +68,7 @@ const getAllVideos = asyncHandler(async (req, res) => {
 })
 
 const publishAVideo = asyncHandler(async (req, res) => {
-    const { title, description, tags, category } = req.body || {}
+    const { title, description, tags, category, isPremium } = req.body || {}
 
     if (!title?.trim() || !description?.trim()) {
         throw new ApiError(400, "Title and description are required")
@@ -102,6 +109,7 @@ const publishAVideo = asyncHandler(async (req, res) => {
         duration: videoFile.duration ?? 0,
         tags: parsedTags,
         category: typeof category === "string" ? category.trim() : "",
+        isPremium: isPremium === "true" || isPremium === true,
         owner: req.user._id
     })
 
@@ -312,11 +320,25 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
         .json(new ApiResponse(200, video, "Publish status toggled successfully"))
 })
 
+const verifyPremiumCode = asyncHandler(async (req, res) => {
+    const { code } = req.body || {}
+    const validCode = (process.env.PREMIUM_SECRET_CODE || "7788").trim()
+
+    if (!code || code.trim().toLowerCase() !== validCode.toLowerCase()) {
+        throw new ApiError(401, "Invalid access code. Please enter the correct code to unlock.")
+    }
+
+    return res
+        .status(200)
+        .json(new ApiResponse(200, { unlocked: true }, "Premium unlocked successfully!"))
+})
+
 export {
     getAllVideos,
     publishAVideo,
     getVideoById,
     updateVideo,
     deleteVideo,
-    togglePublishStatus
+    togglePublishStatus,
+    verifyPremiumCode
 }

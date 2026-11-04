@@ -13,6 +13,7 @@ import Playlist from './pages/Playlist/Playlist';
 import Dashboard from './pages/Dashboard/Dashboard';
 import History from './pages/History/History';
 import Subscriptions from './pages/Subscriptions/Subscriptions';
+import Premium from './pages/Premium/Premium';
 
 /**
  * App — route definitions.
@@ -55,6 +56,7 @@ function App() {
         <Route path="/history" element={<History />} />
         <Route path="/subscriptions" element={<Subscriptions />} />
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/premium" element={<Premium />} />
       </Route>
 
       {/* Catch-all — redirect any unknown path to login */}

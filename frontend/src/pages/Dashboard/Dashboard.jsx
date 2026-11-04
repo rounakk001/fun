@@ -131,7 +131,7 @@ function Dashboard() {
                             <td>
                               <Link to={`/watch/${video._id}`} className="dashboard-table-video" style={{ textDecoration: 'none', color: 'inherit' }}>
                                 <img src={video.thumbnail} alt="" className="dashboard-table-thumb" />
-                                <span className="dashboard-table-vtitle">{video.title}</span>
+                                <span className="dashboard-table-vtitle">{video.isPremium && (<span className="dashboard-premium-badge" title="Premium VIP video">?? </span>)}{video.title}</span>
                               </Link>
                             </td>
                             <td>

@@ -163,6 +163,15 @@
   color: var(--color-error);
 }
 
+/* Crown badge for premium videos in the dashboard table */
+.dashboard-premium-badge {
+  display: inline-block;
+  font-size: 0.8rem;
+  margin-right: 0.25rem;
+  vertical-align: middle;
+  line-height: 1;
+}
+
 .dashboard-table-actions {
   display: flex;
   justify-content: center;

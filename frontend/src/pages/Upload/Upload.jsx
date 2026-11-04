@@ -1,5 +1,5 @@
 import { useState, useRef, useId } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import Header from '../../components/Header/Header';
 import Sidebar from '../../components/Sidebar/Sidebar';
 import { uploadVideo } from '../../api/video.api';
@@ -15,11 +15,14 @@ import './Upload.css';
  */
 function Upload() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isInitiallyPremium = new URLSearchParams(location.search).get('premium') === 'true';
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // ── Form state ────────────────────────────────────────────────
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [isPremium, setIsPremium] = useState(isInitiallyPremium);
   const [videoFile, setVideoFile] = useState(null);
   const [thumbnailFile, setThumbnailFile] = useState(null);
   const [thumbnailPreview, setThumbnailPreview] = useState(null);
@@ -86,6 +89,9 @@ function Upload() {
     formData.append('description', description.trim());
     formData.append('videoFile', videoFile);
     formData.append('thumbnail', thumbnailFile);
+    if (isPremium) {
+      formData.append('isPremium', 'true');
+    }
 
     setIsUploading(true);
     setUploadProgress(0);
@@ -101,7 +107,11 @@ function Upload() {
       });
 
       const newVideoId = response.data.data._id;
-      navigate(`/watch/${newVideoId}`, { replace: true });
+      if (isPremium) {
+        navigate('/premium', { replace: true });
+      } else {
+        navigate(`/watch/${newVideoId}`, { replace: true });
+      }
     } catch (err) {
       // Extract the most useful error message
       const msg =
@@ -332,6 +342,37 @@ function Upload() {
                   )}
                 </div>
               )}
+
+              {/* ── Premium Video Toggle ────────────────────────────── */}
+              <div style={{
+                background: isPremium ? 'rgba(245, 197, 24, 0.12)' : 'rgba(255, 255, 255, 0.04)',
+                border: isPremium ? '1.5px solid rgba(245, 197, 24, 0.5)' : '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '12px',
+                padding: '1rem 1.25rem',
+                margin: '1.5rem 0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '1rem',
+                transition: 'all 0.2s ease'
+              }}>
+                <input
+                  type="checkbox"
+                  id="premium-toggle"
+                  checked={isPremium}
+                  onChange={(e) => setIsPremium(e.target.checked)}
+                  style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: '#f5c518' }}
+                />
+                <label htmlFor="premium-toggle" style={{ cursor: 'pointer', flex: 1 }}>
+                  <div style={{ fontWeight: 600, color: isPremium ? '#f5c518' : '#fff', fontSize: '0.98rem' }}>
+                    👑 Upload as Exclusive Premium Video
+                  </div>
+                  <div style={{ fontSize: '0.82rem', color: '#888', marginTop: '0.2rem' }}>
+                    {isPremium
+                      ? '✓ This video will ONLY be visible in the VIP Premium Lounge and strictly hidden from the public home feed.'
+                      : 'Unchecked: This video will be visible to everyone on the public home feed.'}
+                  </div>
+                </label>
+              </div>
 
               {/* ── Submit ─────────────────────────────────── */}
               <div className="upload-actions">

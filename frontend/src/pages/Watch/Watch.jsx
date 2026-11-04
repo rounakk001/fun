@@ -266,11 +266,21 @@ function Watch() {
   }, [videoId]);
 
   // ── Fetch ML-recommended related videos ─────────────────────────
+  // Waits for `video` state to be populated so we know if this is a premium video.
+  // Premium watch page → only recommend other premium videos (isPremium=true).
+  // Normal watch page  → only recommend non-premium videos (default).
   useEffect(() => {
+    // Don't fire until we know the video's premium status
+    if (video === null) return;
+
     let cancelled = false;
     setRelatedLoading(true);
 
-    getSimilarVideos(videoId, { limit: 8 })
+    const isPremium = video.isPremium === true;
+    const params = { limit: 8 };
+    if (isPremium) params.isPremium = 'true';
+
+    getSimilarVideos(videoId, params)
       .then((res) => {
         if (cancelled) return;
         const recs = res.data?.data?.recommendations || [];
@@ -280,8 +290,10 @@ function Watch() {
       .catch((err) => {
         if (cancelled) return;
         console.warn('[Watch] ML recommendation fetch failed, using fallback:', err);
-        // Fallback to chronological videos
-        getVideos({ page: 1, limit: 8, sortBy: 'createdAt', sortType: 'desc' })
+        // Fallback: show videos from the same section (premium or normal)
+        const fallbackParams = { page: 1, limit: 8, sortBy: 'createdAt', sortType: 'desc' };
+        if (isPremium) fallbackParams.isPremium = 'true';
+        getVideos(fallbackParams)
           .then((res) => {
             if (cancelled) return;
             const docs = res?.data?.data?.docs || [];
@@ -297,7 +309,7 @@ function Watch() {
       });
 
     return () => { cancelled = true; };
-  }, [videoId]);
+  }, [videoId, video]);
 
   /* ── Video like toggle ──────────────────────────────────────── */
   const handleToggleLike = async () => {
@@ -397,8 +409,19 @@ function Watch() {
                   </video>
                 </div>
 
-                {/* ── Title ─────────────────────────────────── */}
-                <h1 className="watch-title">{video.title}</h1>
+                {/* ── Title (with optional premium badge) ─── */}
+                <h1 className="watch-title">
+                  {video.isPremium && (
+                    <span
+                      className="watch-premium-badge"
+                      title="Premium exclusive video"
+                      aria-label="Premium exclusive"
+                    >
+                      👑 VIP
+                    </span>
+                  )}
+                  {video.title}
+                </h1>
 
                 {/* ── Stats + actions row ──────────────────── */}
                 <div className="watch-meta-row">

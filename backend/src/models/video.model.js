@@ -41,6 +41,11 @@ const videoSchema = new Schema(
             default: "",
             index: true
         },
+        isPremium: {
+            type: Boolean,
+            default: false,
+            index: true
+        },
         owner: {
             type: Schema.Types.ObjectId,
             ref: "User"
