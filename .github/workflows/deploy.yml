@@ -22,30 +22,26 @@ jobs:
           script_stop: true
           script: |
             set -e
-
-            echo "Navigating to project..."
-            cd ${{ secrets.PROJECT_PATH }}
-
-            echo "Pulling latest changes..."
+            cd /home/ubuntu/yeonix
+            echo "Pulling latest code from GitHub..."
             git pull origin main
 
-            echo "Installing backend dependencies..."
-            cd backend
-            npm ci
-
-            echo "Installing frontend dependencies..."
-            cd ../frontend
-            npm ci
-
             echo "Building frontend..."
+            cd /home/ubuntu/yeonix/frontend
+            npm install --silent
             npm run build
+            chmod -R 755 dist
 
-            echo "Deploying frontend..."
-            rm -rf ${{ secrets.FRONTEND_BUILD_PATH }}/*
-            cp -r dist/* ${{ secrets.FRONTEND_BUILD_PATH }}/
+            echo "Updating backend dependencies..."
+            cd /home/ubuntu/yeonix/backend
+            npm install --omit=dev --silent
+            pm2 reload yeonix-backend --update-env || pm2 restart yeonix-backend
 
-            echo "Restarting backend..."
-            cd ../backend
-            pm2 restart yeonix-backend
+            echo "Reloading ML service..."
+            cd /home/ubuntu/yeonix/ml-service
+            pm2 reload yeonix-ml || pm2 restart yeonix-ml
 
-            echo "Deployment completed successfully."
+            echo "Reloading Nginx..."
+            sudo systemctl reload nginx
+
+            echo "Deployment to https://yeonix.duckdns.org completed successfully!"
