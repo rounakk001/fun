@@ -1,0 +1,33 @@
+/* Register-specific overrides on top of shared Login.css */
+
+/* Wider card for the extra form fields */
+.auth-card--wide {
+  max-width: 520px;
+}
+
+/* Two-column name / username row */
+.register-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+@media (max-width: 480px) {
+  .register-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Field annotation text */
+.register-required {
+  color: var(--color-error);
+  font-size: var(--font-size-xs);
+  margin-left: 2px;
+}
+
+.register-optional {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+  margin-left: var(--space-1);
+}

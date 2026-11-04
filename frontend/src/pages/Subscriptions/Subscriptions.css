@@ -1,0 +1,226 @@
+/* ── Root / Layout ─────────────────────────────────────────────── */
+
+.subs-root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.subs-layout {
+  display: flex;
+  flex: 1;
+  padding-top: 64px;
+}
+
+.subs-main {
+  margin-left: 0;
+  flex: 1;
+  padding: 2rem 2.5rem;
+  overflow-y: auto;
+  transition: margin-left var(--transition-slow);
+}
+
+.subs-layout.sidebar-open .subs-main {
+  margin-left: var(--sidebar-width);
+}
+
+@media (max-width: 768px) {
+  .subs-main,
+  .subs-layout.sidebar-open .subs-main {
+    margin-left: 0;
+    padding: 1.5rem 1rem;
+  }
+}
+
+/* ── Page heading ──────────────────────────────────────────────── */
+
+.subs-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-bottom: 2rem;
+  letter-spacing: -0.02em;
+}
+
+/* ── Channel grid ──────────────────────────────────────────────── */
+
+.subs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 1.5rem 1rem;
+}
+
+/* ── Channel card ──────────────────────────────────────────────── */
+
+.subs-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  text-decoration: none;
+  color: var(--color-text);
+  padding: 1rem 0.5rem;
+  border-radius: var(--radius-lg);
+  transition: background-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.subs-card:hover {
+  background-color: var(--color-bg-hover);
+  transform: translateY(-2px);
+}
+
+/* ── Avatar + new-content dot ──────────────────────────────────── */
+
+.subs-card__avatar-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.subs-card__avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--color-border);
+  transition: border-color var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-elevated);
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.subs-card:hover .subs-card__avatar {
+  border-color: var(--color-primary);
+}
+
+.subs-card__avatar--fallback {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 2px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Red "new content" indicator dot — bottom-right of avatar */
+.subs-card__new-dot {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background-color: #e53935;  /* distinct red, not blue */
+  border: 2px solid var(--color-bg, #0f0f0f);
+  box-shadow: 0 0 6px rgba(229, 57, 53, 0.7);
+  pointer-events: none;
+}
+
+/* ── Card text ─────────────────────────────────────────────────── */
+
+.subs-card__name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--color-text);
+  margin: 0;
+  max-width: 100px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.subs-card__username {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin: 0;
+  max-width: 100px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+
+/* ── Loading skeletons ─────────────────────────────────────────── */
+
+.subs-card--skeleton {
+  pointer-events: none;
+}
+
+.subs-card__avatar-skeleton {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-elevated) 25%,
+    var(--color-bg-hover) 50%,
+    var(--color-bg-elevated) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+}
+
+.subs-card__name-skeleton {
+  width: 70px;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-elevated) 25%,
+    var(--color-bg-hover) 50%,
+    var(--color-bg-elevated) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Empty / Error states ──────────────────────────────────────── */
+
+.subs-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 5rem 1rem;
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.subs-empty__icon {
+  font-size: 3rem;
+}
+
+.subs-empty h2 {
+  font-size: 1.25rem;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.subs-empty p {
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.subs-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 4rem;
+  color: var(--color-error);
+  text-align: center;
+}

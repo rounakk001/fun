@@ -1,0 +1,1809 @@
+# Yeonix — Bugs Journal
+
+A running log of real bugs hit during development, their root causes, and how they were fixed. Kept for interview prep and future debugging reference — the goal is to remember *why* something broke, not just that it did.
+
+---
+
+## Slice 1: Authentication (Register / Login / Logout / Refresh)
+
+### 1. Cookies not persisting after login (`secure: true` hardcoded)
+
+**Symptom:** Login appeared to succeed in the network tab, but the session didn't persist — `getCurrentUser` would fail right after.
+
+**Root cause:** `loginUser` and `logoutUser` had `secure: true` hardcoded in the cookie options. Browsers refuse to store `secure` cookies over plain `http://localhost` (no TLS), so the `accessToken`/`refreshToken` cookies were silently dropped. `refreshAccessToken` already handled this correctly with an environment check — the other two functions just hadn't been updated to match.
+
+**Fix:** Made cookie options environment-aware in all three functions:
+```js
+const options = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax"
+}
+```
+Also required adding `NODE_ENV=development` to `.env`, since it wasn't set at all — meant `process.env.NODE_ENV` was `undefined`, which happened to evaluate safely but wasn't reliable long-term.
+
+**File:** `user.controller.js` — `loginUser`, `logoutUser`
+
+---
+
+### 2. `video.routes.js` blocked public video browsing
+
+**Symptom:** N/A yet (caught during code review, before it caused a live bug).
+
+**Root cause:** `router.use(verifyJWT)` was applied globally at the top of the file, forcing auth on every video route — including `GET /` (list videos) and `GET /:videoId` (view a single video). A video platform needs logged-out users to browse/watch without an account.
+
+**Fix:** Removed the blanket `router.use(verifyJWT)` and applied `verifyJWT` per-route, only on routes that mutate data (create, update, delete, toggle-publish).
+
+**File:** `video.routes.js`
+
+---
+
+### 3. Missing global error-handling middleware
+
+**Symptom:** N/A yet (caught during code review).
+
+**Root cause:** `asyncHandler` forwards errors via `next(err)`, but `app.js` had no error-handling middleware registered to catch them — so thrown `ApiError`s would fall through to Express's default HTML error page instead of returning the app's structured JSON (`{success, message, errors, data}`). This would have broken every frontend error-handling call (`err.response?.data?.message`).
+
+**Fix:** Added a centralized error handler at the end of `app.js`, after all routes, that checks `instanceof ApiError` and returns consistent JSON; falls back to a generic 500 for unexpected errors.
+
+**File:** `app.js`
+
+---
+
+### 4. Registration succeeded on backend, but frontend showed "Network error: Cannot reach the server"
+
+**Symptom:** User + Cloudinary avatar were both created successfully (visible in MongoDB Atlas and Cloudinary), but the frontend never received a response — showed a generic network error.
+
+**Initial (wrong) hypothesis:** Suspected `nodemon` was restarting mid-request because multer writes/deletes files inside `public/temp/`, which nodemon might interpret as a source change. Checked terminal logs — no `[nodemon] restarting` message appeared, so this was ruled out.
+
+**Actual root cause:** `CORS_ORIGIN` in `.env` was set to `http://localhost:5173`, but Vite was actually running on `http://localhost:5174` (port 5173 was already occupied by a leftover process). The origin mismatch caused the browser to block the response entirely under CORS policy — the request completed server-side, but the browser never handed the response back to the frontend JS.
+
+**Fix:** Freed port 5173 (`netstat -ano | findstr :5173` → `taskkill /PID <pid> /F`) so Vite could consistently bind to the same port that `.env`'s `CORS_ORIGIN` expected. (Alternative fix would have been updating `CORS_ORIGIN` to match whatever port Vite actually used.)
+
+**Lesson:** A backend fully completing its work is not proof that the frontend received anything — CORS failures happen entirely in the browser, after the server has already done its job.
+
+---
+
+### 5. `CORS_ORIGIN=*` in `.env`
+
+**Symptom:** Would have caused the same class of failure as bug #4, but caught before it caused a live issue.
+
+**Root cause:** `app.js` uses `credentials: true` in its CORS config (required for cookie-based auth), but the CORS spec explicitly forbids combining `Access-Control-Allow-Credentials: true` with a wildcard `Access-Control-Allow-Origin: *`. Browsers reject this combination outright.
+
+**Fix:** Set `CORS_ORIGIN` to the exact frontend origin (`http://localhost:5173` in dev; will be the deployed Vercel URL in production).
+
+**File:** `.env`
+
+---
+
+### 6. Login threw `500 Internal Server Error` — `bcrypt.compare` given `undefined`
+
+**Symptom:** Registration worked, but logging in with valid credentials returned a `500`.
+
+**Root cause:** Added `select: false` to the `password` field in `user.model.js` (correct hardening — prevents password hashes from leaking on normal queries), but didn't update `loginUser` to explicitly re-include the password field when looking up the user for authentication. `User.findOne(...)` returned a user object with `password` excluded, so `bcrypt.compare(password, undefined)` threw `Error: data and hash arguments required`.
+
+**Fix:**
+```js
+const user = await User.findOne({
+    $or: [{username}, {email}]
+}).select("+password")
+```
+
+**File:** `user.controller.js` — `loginUser`
+
+**Lesson:** Adding `select: false` to a schema field is a "spooky action at a distance" change — every existing query that relied on that field being present by default needs to be audited and updated.
+
+---
+
+### 7. `TypeError: Cannot read properties of undefined (reading 'refreshToken')` in `refreshAccessToken`
+
+**Symptom:** Backend terminal repeatedly crashed with this error, seemingly at random, even when nothing looked wrong in the UI.
+
+**Investigation:** Ruled out several wrong leads before finding it:
+- Not caused by `select: false` (different code path than bug #6)
+- Not a zombie/duplicate process on port 8000 (`netstat -ano | findstr :8000` showed only one listener)
+- Confirmed via temporary debug logging (`console.log(req.cookies)`, `console.log(req.headers.cookie)`) that `req.cookies` really was present as an object — just without an `accessToken`/`refreshToken` key, since the user was logged out
+
+**Actual root cause — a deadlock in the frontend's axios interceptor, not a backend bug at all:**
+1. `AuthContext` calls `getCurrentUser()` on every app load, even while logged out.
+2. Backend correctly returns `401`.
+3. The axios response interceptor catches *any* `401` and tries to silently refresh via `POST /users/refresh-token`.
+4. Since the user was never logged in, there's no refresh token either — that call *also* returns `401`.
+5. Because the refresh call was made through the same `axiosInstance`, it passed back through the same interceptor. The interceptor saw another `401`, and — since `isRefreshing` was already `true` — queued this request to wait for `processQueue()`.
+6. But `processQueue()` was only ever going to be called by the *same* refresh flow that was now stuck waiting on this queued promise. It was waiting on itself. Permanent hang, no crash, no error — just infinite loading on the frontend.
+
+**Fix (frontend):** Added a check in the interceptor to detect when the *failing* request is the refresh-token call itself, and short-circuit straight to "session expired" instead of attempting to queue/retry it:
+```js
+const isRefreshCall = originalRequest?.url?.includes('/users/refresh-token');
+
+if (error.response?.status === 401 && isRefreshCall) {
+    isRefreshing = false;
+    processQueue(error);
+    window.dispatchEvent(new CustomEvent('yeonix:session-expired'));
+    return Promise.reject(error);
+}
+```
+
+**Fix (backend, defensive hardening — kept regardless of the frontend fix):**
+```js
+const incomingRefreshToken = req.cookies?.refreshToken || req.body?.refreshToken
+```
+A publicly-reachable endpoint (hit by every anonymous visitor on page load) should never assume `req.cookies` or `req.body` are defined — it should fail cleanly with a `401`, not crash.
+
+**File:** `axiosInstance.js` (frontend), `user.controller.js` — `refreshAccessToken` (backend)
+
+**Lesson:** A `401` from a *refresh* endpoint means "there is no session to refresh" — it's terminal, not retryable. Treating it the same as a `401` from any other endpoint creates a self-referential retry loop.
+
+---
+
+## Minor cleanups (non-breaking, done alongside the above)
+
+- **Stray `undefined` printed to terminal on every login:** `console.log(email)` left in `loginUser` from original course boilerplate — printed `undefined` whenever logging in via username instead of email. Removed.
+- **Mongoose deprecation warning:** `{ new: true }` on `findOneAndUpdate` calls is deprecated in favor of `{ returnDocument: 'after' }`. Updated in `logoutUser`, `updateAccountDetails`, `updateUserAvatar`, `updateUserCoverImage`.
+- **Multer filename collisions:** `file.originalname` used directly as the saved filename risked two concurrent uploads overwriting each other. Fixed with a unique prefix (`Date.now() + random suffix`).
+- **`extented: true` typo** in `express.urlencoded()` config in `app.js` — corrected to `extended: true`.
+- **`fs.unlinkSync` could throw** in `cloudinary.js`'s catch block if the temp file was already gone — wrapped with `fs.existsSync()` check first.
+
+---
+
+## General lessons from this slice
+
+1. **The backend completing successfully doesn't mean the frontend received anything.** CORS failures, port mismatches, and interceptor bugs all happen *after* the server has already done its job — check both sides before assuming the backend is broken.
+2. **`select: false` and other schema-level changes ripple outward.** Any change to how a field is returned by default requires auditing every existing query that touches it.
+3. **Debug logging beats guessing.** The `refreshToken` crash looked like 3-4 different plausible bugs before temporary `console.log`s on `req.cookies`/`req.headers.cookie` gave a definitive answer.
+4. **Silent-refresh interceptors need an escape hatch.** Any "retry on 401 via refresh" pattern must explicitly exclude the refresh call itself from triggering another refresh attempt — otherwise a logged-out visitor can create a self-referential hang.
+5. **Ports drift silently.** Vite will happily jump to the next available port without loudly failing — always check the actual terminal output rather than assuming the default port is in use.
+
+---
+
+*Last updated: Slice 1 (Auth) complete. Next: Slice 2 — Video upload, feed, watch page.*
+
+# Yeonix — Bugs Journal
+
+A running log of real bugs hit during development, their root causes, and how they were fixed. Kept for interview prep and future debugging reference — the goal is to remember *why* something broke, not just that it did.
+
+---
+
+## Slice 1: Authentication (Register / Login / Logout / Refresh)
+
+### 1. Cookies not persisting after login (`secure: true` hardcoded)
+
+**Symptom:** Login appeared to succeed in the network tab, but the session didn't persist — `getCurrentUser` would fail right after.
+
+**Root cause:** `loginUser` and `logoutUser` had `secure: true` hardcoded in the cookie options. Browsers refuse to store `secure` cookies over plain `http://localhost` (no TLS), so the `accessToken`/`refreshToken` cookies were silently dropped. `refreshAccessToken` already handled this correctly with an environment check — the other two functions just hadn't been updated to match.
+
+**Fix:** Made cookie options environment-aware in all three functions:
+```js
+const options = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax"
+}
+```
+Also required adding `NODE_ENV=development` to `.env`, since it wasn't set at all — meant `process.env.NODE_ENV` was `undefined`, which happened to evaluate safely but wasn't reliable long-term.
+
+**File:** `user.controller.js` — `loginUser`, `logoutUser`
+
+---
+
+### 2. `video.routes.js` blocked public video browsing
+
+**Symptom:** N/A yet (caught during code review, before it caused a live bug).
+
+**Root cause:** `router.use(verifyJWT)` was applied globally at the top of the file, forcing auth on every video route — including `GET /` (list videos) and `GET /:videoId` (view a single video). A video platform needs logged-out users to browse/watch without an account.
+
+**Fix:** Removed the blanket `router.use(verifyJWT)` and applied `verifyJWT` per-route, only on routes that mutate data (create, update, delete, toggle-publish).
+
+**File:** `video.routes.js`
+
+---
+
+### 3. Missing global error-handling middleware
+
+**Symptom:** N/A yet (caught during code review).
+
+**Root cause:** `asyncHandler` forwards errors via `next(err)`, but `app.js` had no error-handling middleware registered to catch them — so thrown `ApiError`s would fall through to Express's default HTML error page instead of returning the app's structured JSON (`{success, message, errors, data}`). This would have broken every frontend error-handling call (`err.response?.data?.message`).
+
+**Fix:** Added a centralized error handler at the end of `app.js`, after all routes, that checks `instanceof ApiError` and returns consistent JSON; falls back to a generic 500 for unexpected errors.
+
+**File:** `app.js`
+
+---
+
+### 4. Registration succeeded on backend, but frontend showed "Network error: Cannot reach the server"
+
+**Symptom:** User + Cloudinary avatar were both created successfully (visible in MongoDB Atlas and Cloudinary), but the frontend never received a response — showed a generic network error.
+
+**Initial (wrong) hypothesis:** Suspected `nodemon` was restarting mid-request because multer writes/deletes files inside `public/temp/`, which nodemon might interpret as a source change. Checked terminal logs — no `[nodemon] restarting` message appeared, so this was ruled out.
+
+**Actual root cause:** `CORS_ORIGIN` in `.env` was set to `http://localhost:5173`, but Vite was actually running on `http://localhost:5174` (port 5173 was already occupied by a leftover process). The origin mismatch caused the browser to block the response entirely under CORS policy — the request completed server-side, but the browser never handed the response back to the frontend JS.
+
+**Fix:** Freed port 5173 (`netstat -ano | findstr :5173` → `taskkill /PID <pid> /F`) so Vite could consistently bind to the same port that `.env`'s `CORS_ORIGIN` expected. (Alternative fix would have been updating `CORS_ORIGIN` to match whatever port Vite actually used.)
+
+**Lesson:** A backend fully completing its work is not proof that the frontend received anything — CORS failures happen entirely in the browser, after the server has already done its job.
+
+---
+
+### 5. `CORS_ORIGIN=*` in `.env`
+
+**Symptom:** Would have caused the same class of failure as bug #4, but caught before it caused a live issue.
+
+**Root cause:** `app.js` uses `credentials: true` in its CORS config (required for cookie-based auth), but the CORS spec explicitly forbids combining `Access-Control-Allow-Credentials: true` with a wildcard `Access-Control-Allow-Origin: *`. Browsers reject this combination outright.
+
+**Fix:** Set `CORS_ORIGIN` to the exact frontend origin (`http://localhost:5173` in dev; will be the deployed Vercel URL in production).
+
+**File:** `.env`
+
+---
+
+### 6. Login threw `500 Internal Server Error` — `bcrypt.compare` given `undefined`
+
+**Symptom:** Registration worked, but logging in with valid credentials returned a `500`.
+
+**Root cause:** Added `select: false` to the `password` field in `user.model.js` (correct hardening — prevents password hashes from leaking on normal queries), but didn't update `loginUser` to explicitly re-include the password field when looking up the user for authentication. `User.findOne(...)` returned a user object with `password` excluded, so `bcrypt.compare(password, undefined)` threw `Error: data and hash arguments required`.
+
+**Fix:**
+```js
+const user = await User.findOne({
+    $or: [{username}, {email}]
+}).select("+password")
+```
+
+**File:** `user.controller.js` — `loginUser`
+
+**Lesson:** Adding `select: false` to a schema field is a "spooky action at a distance" change — every existing query that relied on that field being present by default needs to be audited and updated.
+
+---
+
+### 7. `TypeError: Cannot read properties of undefined (reading 'refreshToken')` in `refreshAccessToken`
+
+**Symptom:** Backend terminal repeatedly crashed with this error, seemingly at random, even when nothing looked wrong in the UI.
+
+**Investigation:** Ruled out several wrong leads before finding it:
+- Not caused by `select: false` (different code path than bug #6)
+- Not a zombie/duplicate process on port 8000 (`netstat -ano | findstr :8000` showed only one listener)
+- Confirmed via temporary debug logging (`console.log(req.cookies)`, `console.log(req.headers.cookie)`) that `req.cookies` really was present as an object — just without an `accessToken`/`refreshToken` key, since the user was logged out
+
+**Actual root cause — a deadlock in the frontend's axios interceptor, not a backend bug at all:**
+1. `AuthContext` calls `getCurrentUser()` on every app load, even while logged out.
+2. Backend correctly returns `401`.
+3. The axios response interceptor catches *any* `401` and tries to silently refresh via `POST /users/refresh-token`.
+4. Since the user was never logged in, there's no refresh token either — that call *also* returns `401`.
+5. Because the refresh call was made through the same `axiosInstance`, it passed back through the same interceptor. The interceptor saw another `401`, and — since `isRefreshing` was already `true` — queued this request to wait for `processQueue()`.
+6. But `processQueue()` was only ever going to be called by the *same* refresh flow that was now stuck waiting on this queued promise. It was waiting on itself. Permanent hang, no crash, no error — just infinite loading on the frontend.
+
+**Fix (frontend):** Added a check in the interceptor to detect when the *failing* request is the refresh-token call itself, and short-circuit straight to "session expired" instead of attempting to queue/retry it:
+```js
+const isRefreshCall = originalRequest?.url?.includes('/users/refresh-token');
+
+if (error.response?.status === 401 && isRefreshCall) {
+    isRefreshing = false;
+    processQueue(error);
+    window.dispatchEvent(new CustomEvent('yeonix:session-expired'));
+    return Promise.reject(error);
+}
+```
+
+**Fix (backend, defensive hardening — kept regardless of the frontend fix):**
+```js
+const incomingRefreshToken = req.cookies?.refreshToken || req.body?.refreshToken
+```
+A publicly-reachable endpoint (hit by every anonymous visitor on page load) should never assume `req.cookies` or `req.body` are defined — it should fail cleanly with a `401`, not crash.
+
+**File:** `axiosInstance.js` (frontend), `user.controller.js` — `refreshAccessToken` (backend)
+
+**Lesson:** A `401` from a *refresh* endpoint means "there is no session to refresh" — it's terminal, not retryable. Treating it the same as a `401` from any other endpoint creates a self-referential retry loop.
+
+---
+
+## Minor cleanups (non-breaking, done alongside the above)
+
+- **Stray `undefined` printed to terminal on every login:** `console.log(email)` left in `loginUser` from original course boilerplate — printed `undefined` whenever logging in via username instead of email. Removed.
+- **Mongoose deprecation warning:** `{ new: true }` on `findOneAndUpdate` calls is deprecated in favor of `{ returnDocument: 'after' }`. Updated in `logoutUser`, `updateAccountDetails`, `updateUserAvatar`, `updateUserCoverImage`.
+- **Multer filename collisions:** `file.originalname` used directly as the saved filename risked two concurrent uploads overwriting each other. Fixed with a unique prefix (`Date.now() + random suffix`).
+- **`extented: true` typo** in `express.urlencoded()` config in `app.js` — corrected to `extended: true`.
+- **`fs.unlinkSync` could throw** in `cloudinary.js`'s catch block if the temp file was already gone — wrapped with `fs.existsSync()` check first.
+
+---
+
+## Slice 2: Video Core (Upload / Feed / Search / Watch)
+
+### 8. `video.routes.js` had the same blanket-auth issue as before
+
+**Symptom:** N/A yet (caught during initial review, same as Slice 1 bug #2, since this file was scaffolded from the same course template).
+
+**Root cause:** `router.use(verifyJWT)` applied globally, blocking public video browsing.
+
+**Fix:** Applied `verifyJWT` per-route, only on `POST /`, `PATCH /:videoId`, `DELETE /:videoId`, and `PATCH /toggle/publish/:videoId`. `GET /` and `GET /:videoId` stayed public.
+
+**File:** `video.routes.js`
+
+---
+
+### 9. `TypeError: Cannot destructure property 'title' of 'req.body' as it is undefined` in `updateVideo`
+
+**Symptom:** Sending a `PATCH` request to update a video with a completely empty `multipart/form-data` body returned a raw `500` instead of the expected clean `400` validation error.
+
+**Root cause:** Same category of bug as Slice 1's `refreshToken` crash — code assumed `req.body` would always be at least `{}`. When multer parses a genuinely empty multipart body, `req.body` comes back `undefined` rather than an empty object, so `const { title, description } = req.body` threw before any of the function's own validation logic could run.
+
+**Fix:**
+```js
+const { title, description } = req.body || {}
+```
+Applied to both `updateVideo` and defensively to `publishAVideo` for consistency.
+
+**File:** `video.controller.js` — `updateVideo`, `publishAVideo`
+
+**Lesson (recurring):** This is the third time this exact pattern has appeared (`req.cookies` in Slice 1, now `req.body` here). Any destructuring of an Express request property (`req.body`, `req.cookies`, `req.params`, `req.query`) should default to `|| {}` unless there's a guarantee upstream (e.g. required middleware) that it will always be populated.
+
+---
+
+### 10. Autoplay-next feature looped between only 2 videos instead of advancing through the full list
+
+**Symptom:** After the first video finished and auto-advanced to a second video, it would then loop back to the first video indefinitely (A → B → A → B), even with 4+ videos in the database.
+
+**Root cause:** The "related videos" list on the Watch page was being fetched once on initial mount and not refreshed when navigating to a new video via autoplay-next — so the "exclude current video" check was comparing against a stale video ID rather than whatever was actually playing at that moment.
+
+**Fix:** Ensured the related-videos fetch and the "current video" reference both update whenever the video ID changes (not just on initial mount), so up-next selection always excludes the actual currently-playing video and can keep advancing through the available list.
+
+**File:** Watch page component (frontend)
+
+---
+
+### 11. View count added — deliberate scope decision, not a bug
+
+**What:** `getVideoById` was updated to atomically increment `views` on every fetch:
+```js
+const video = await Video.findByIdAndUpdate(
+    videoId,
+    { $inc: { views: 1 } },
+    { returnDocument: "after" }
+).populate("owner", "username fullName avatar")
+```
+Used `$inc` specifically instead of a read-then-write pattern to avoid a race condition if multiple requests hit the same video concurrently.
+
+**Known limitation, accepted deliberately:** This increments on every single fetch — page refreshes, repeat visits, and autoplay-next navigations all count as a "view," with no deduplication window or minimum watch-time threshold. Real platforms have much more sophisticated view-counting logic; this is the intentionally simple, "correct-enough for this stage" version. Worth mentioning as a known tradeoff if asked in an interview, not something to over-engineer now.
+
+**File:** `video.controller.js` — `getVideoById`
+
+---
+
+## General lessons from this slice
+
+1. **The backend completing successfully doesn't mean the frontend received anything.** CORS failures, port mismatches, and interceptor bugs all happen *after* the server has already done its job — check both sides before assuming the backend is broken.
+2. **`select: false` and other schema-level changes ripple outward.** Any change to how a field is returned by default requires auditing every existing query that touches it.
+3. **Debug logging beats guessing.** The `refreshToken` crash looked like 3-4 different plausible bugs before temporary `console.log`s on `req.cookies`/`req.headers.cookie` gave a definitive answer.
+4. **Silent-refresh interceptors need an escape hatch.** Any "retry on 401 via refresh" pattern must explicitly exclude the refresh call itself from triggering another refresh attempt — otherwise a logged-out visitor can create a self-referential hang.
+5. **Ports drift silently.** Vite will happily jump to the next available port without loudly failing — always check the actual terminal output rather than assuming the default port is in use.
+
+---
+
+*Last updated: Slice 2 (Video core — upload, feed, search, watch, autoplay-next, view counts) complete. Next: Slice 3 — Channel/profile pages + subscriptions.*
+
+# Yeonix — Bugs Journal
+
+A running log of real bugs hit during development, their root causes, and how they were fixed. Kept for interview prep and future debugging reference — the goal is to remember *why* something broke, not just that it did.
+
+---
+
+## Slice 1: Authentication (Register / Login / Logout / Refresh)
+
+### 1. Cookies not persisting after login (`secure: true` hardcoded)
+
+**Symptom:** Login appeared to succeed in the network tab, but the session didn't persist — `getCurrentUser` would fail right after.
+
+**Root cause:** `loginUser` and `logoutUser` had `secure: true` hardcoded in the cookie options. Browsers refuse to store `secure` cookies over plain `http://localhost` (no TLS), so the `accessToken`/`refreshToken` cookies were silently dropped. `refreshAccessToken` already handled this correctly with an environment check — the other two functions just hadn't been updated to match.
+
+**Fix:** Made cookie options environment-aware in all three functions:
+```js
+const options = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax"
+}
+```
+Also required adding `NODE_ENV=development` to `.env`, since it wasn't set at all — meant `process.env.NODE_ENV` was `undefined`, which happened to evaluate safely but wasn't reliable long-term.
+
+**File:** `user.controller.js` — `loginUser`, `logoutUser`
+
+---
+
+### 2. `video.routes.js` blocked public video browsing
+
+**Symptom:** N/A yet (caught during code review, before it caused a live bug).
+
+**Root cause:** `router.use(verifyJWT)` was applied globally at the top of the file, forcing auth on every video route — including `GET /` (list videos) and `GET /:videoId` (view a single video). A video platform needs logged-out users to browse/watch without an account.
+
+**Fix:** Removed the blanket `router.use(verifyJWT)` and applied `verifyJWT` per-route, only on routes that mutate data (create, update, delete, toggle-publish).
+
+**File:** `video.routes.js`
+
+---
+
+### 3. Missing global error-handling middleware
+
+**Symptom:** N/A yet (caught during code review).
+
+**Root cause:** `asyncHandler` forwards errors via `next(err)`, but `app.js` had no error-handling middleware registered to catch them — so thrown `ApiError`s would fall through to Express's default HTML error page instead of returning the app's structured JSON (`{success, message, errors, data}`). This would have broken every frontend error-handling call (`err.response?.data?.message`).
+
+**Fix:** Added a centralized error handler at the end of `app.js`, after all routes, that checks `instanceof ApiError` and returns consistent JSON; falls back to a generic 500 for unexpected errors.
+
+**File:** `app.js`
+
+---
+
+### 4. Registration succeeded on backend, but frontend showed "Network error: Cannot reach the server"
+
+**Symptom:** User + Cloudinary avatar were both created successfully (visible in MongoDB Atlas and Cloudinary), but the frontend never received a response — showed a generic network error.
+
+**Initial (wrong) hypothesis:** Suspected `nodemon` was restarting mid-request because multer writes/deletes files inside `public/temp/`, which nodemon might interpret as a source change. Checked terminal logs — no `[nodemon] restarting` message appeared, so this was ruled out.
+
+**Actual root cause:** `CORS_ORIGIN` in `.env` was set to `http://localhost:5173`, but Vite was actually running on `http://localhost:5174` (port 5173 was already occupied by a leftover process). The origin mismatch caused the browser to block the response entirely under CORS policy — the request completed server-side, but the browser never handed the response back to the frontend JS.
+
+**Fix:** Freed port 5173 (`netstat -ano | findstr :5173` → `taskkill /PID <pid> /F`) so Vite could consistently bind to the same port that `.env`'s `CORS_ORIGIN` expected. (Alternative fix would have been updating `CORS_ORIGIN` to match whatever port Vite actually used.)
+
+**Lesson:** A backend fully completing its work is not proof that the frontend received anything — CORS failures happen entirely in the browser, after the server has already done its job.
+
+---
+
+### 5. `CORS_ORIGIN=*` in `.env`
+
+**Symptom:** Would have caused the same class of failure as bug #4, but caught before it caused a live issue.
+
+**Root cause:** `app.js` uses `credentials: true` in its CORS config (required for cookie-based auth), but the CORS spec explicitly forbids combining `Access-Control-Allow-Credentials: true` with a wildcard `Access-Control-Allow-Origin: *`. Browsers reject this combination outright.
+
+**Fix:** Set `CORS_ORIGIN` to the exact frontend origin (`http://localhost:5173` in dev; will be the deployed Vercel URL in production).
+
+**File:** `.env`
+
+---
+
+### 6. Login threw `500 Internal Server Error` — `bcrypt.compare` given `undefined`
+
+**Symptom:** Registration worked, but logging in with valid credentials returned a `500`.
+
+**Root cause:** Added `select: false` to the `password` field in `user.model.js` (correct hardening — prevents password hashes from leaking on normal queries), but didn't update `loginUser` to explicitly re-include the password field when looking up the user for authentication. `User.findOne(...)` returned a user object with `password` excluded, so `bcrypt.compare(password, undefined)` threw `Error: data and hash arguments required`.
+
+**Fix:**
+```js
+const user = await User.findOne({
+    $or: [{username}, {email}]
+}).select("+password")
+```
+
+**File:** `user.controller.js` — `loginUser`
+
+**Lesson:** Adding `select: false` to a schema field is a "spooky action at a distance" change — every existing query that relied on that field being present by default needs to be audited and updated.
+
+---
+
+### 7. `TypeError: Cannot read properties of undefined (reading 'refreshToken')` in `refreshAccessToken`
+
+**Symptom:** Backend terminal repeatedly crashed with this error, seemingly at random, even when nothing looked wrong in the UI.
+
+**Investigation:** Ruled out several wrong leads before finding it:
+- Not caused by `select: false` (different code path than bug #6)
+- Not a zombie/duplicate process on port 8000 (`netstat -ano | findstr :8000` showed only one listener)
+- Confirmed via temporary debug logging (`console.log(req.cookies)`, `console.log(req.headers.cookie)`) that `req.cookies` really was present as an object — just without an `accessToken`/`refreshToken` key, since the user was logged out
+
+**Actual root cause — a deadlock in the frontend's axios interceptor, not a backend bug at all:**
+1. `AuthContext` calls `getCurrentUser()` on every app load, even while logged out.
+2. Backend correctly returns `401`.
+3. The axios response interceptor catches *any* `401` and tries to silently refresh via `POST /users/refresh-token`.
+4. Since the user was never logged in, there's no refresh token either — that call *also* returns `401`.
+5. Because the refresh call was made through the same `axiosInstance`, it passed back through the same interceptor. The interceptor saw another `401`, and — since `isRefreshing` was already `true` — queued this request to wait for `processQueue()`.
+6. But `processQueue()` was only ever going to be called by the *same* refresh flow that was now stuck waiting on this queued promise. It was waiting on itself. Permanent hang, no crash, no error — just infinite loading on the frontend.
+
+**Fix (frontend):** Added a check in the interceptor to detect when the *failing* request is the refresh-token call itself, and short-circuit straight to "session expired" instead of attempting to queue/retry it:
+```js
+const isRefreshCall = originalRequest?.url?.includes('/users/refresh-token');
+
+if (error.response?.status === 401 && isRefreshCall) {
+    isRefreshing = false;
+    processQueue(error);
+    window.dispatchEvent(new CustomEvent('yeonix:session-expired'));
+    return Promise.reject(error);
+}
+```
+
+**Fix (backend, defensive hardening — kept regardless of the frontend fix):**
+```js
+const incomingRefreshToken = req.cookies?.refreshToken || req.body?.refreshToken
+```
+A publicly-reachable endpoint (hit by every anonymous visitor on page load) should never assume `req.cookies` or `req.body` are defined — it should fail cleanly with a `401`, not crash.
+
+**File:** `axiosInstance.js` (frontend), `user.controller.js` — `refreshAccessToken` (backend)
+
+**Lesson:** A `401` from a *refresh* endpoint means "there is no session to refresh" — it's terminal, not retryable. Treating it the same as a `401` from any other endpoint creates a self-referential retry loop.
+
+---
+
+## Minor cleanups (non-breaking, done alongside the above)
+
+- **Stray `undefined` printed to terminal on every login:** `console.log(email)` left in `loginUser` from original course boilerplate — printed `undefined` whenever logging in via username instead of email. Removed.
+- **Mongoose deprecation warning:** `{ new: true }` on `findOneAndUpdate` calls is deprecated in favor of `{ returnDocument: 'after' }`. Updated in `logoutUser`, `updateAccountDetails`, `updateUserAvatar`, `updateUserCoverImage`.
+- **Multer filename collisions:** `file.originalname` used directly as the saved filename risked two concurrent uploads overwriting each other. Fixed with a unique prefix (`Date.now() + random suffix`).
+- **`extented: true` typo** in `express.urlencoded()` config in `app.js` — corrected to `extended: true`.
+- **`fs.unlinkSync` could throw** in `cloudinary.js`'s catch block if the temp file was already gone — wrapped with `fs.existsSync()` check first.
+
+---
+
+## Slice 2: Video Core (Upload / Feed / Search / Watch)
+
+### 8. `video.routes.js` had the same blanket-auth issue as before
+
+**Symptom:** N/A yet (caught during initial review, same as Slice 1 bug #2, since this file was scaffolded from the same course template).
+
+**Root cause:** `router.use(verifyJWT)` applied globally, blocking public video browsing.
+
+**Fix:** Applied `verifyJWT` per-route, only on `POST /`, `PATCH /:videoId`, `DELETE /:videoId`, and `PATCH /toggle/publish/:videoId`. `GET /` and `GET /:videoId` stayed public.
+
+**File:** `video.routes.js`
+
+---
+
+### 9. `TypeError: Cannot destructure property 'title' of 'req.body' as it is undefined` in `updateVideo`
+
+**Symptom:** Sending a `PATCH` request to update a video with a completely empty `multipart/form-data` body returned a raw `500` instead of the expected clean `400` validation error.
+
+**Root cause:** Same category of bug as Slice 1's `refreshToken` crash — code assumed `req.body` would always be at least `{}`. When multer parses a genuinely empty multipart body, `req.body` comes back `undefined` rather than an empty object, so `const { title, description } = req.body` threw before any of the function's own validation logic could run.
+
+**Fix:**
+```js
+const { title, description } = req.body || {}
+```
+Applied to both `updateVideo` and defensively to `publishAVideo` for consistency.
+
+**File:** `video.controller.js` — `updateVideo`, `publishAVideo`
+
+**Lesson (recurring):** This is the third time this exact pattern has appeared (`req.cookies` in Slice 1, now `req.body` here). Any destructuring of an Express request property (`req.body`, `req.cookies`, `req.params`, `req.query`) should default to `|| {}` unless there's a guarantee upstream (e.g. required middleware) that it will always be populated.
+
+---
+
+### 10. Autoplay-next feature looped between only 2 videos instead of advancing through the full list
+
+**Symptom:** After the first video finished and auto-advanced to a second video, it would then loop back to the first video indefinitely (A → B → A → B), even with 4+ videos in the database.
+
+**Root cause:** The "related videos" list on the Watch page was being fetched once on initial mount and not refreshed when navigating to a new video via autoplay-next — so the "exclude current video" check was comparing against a stale video ID rather than whatever was actually playing at that moment.
+
+**Fix:** Ensured the related-videos fetch and the "current video" reference both update whenever the video ID changes (not just on initial mount), so up-next selection always excludes the actual currently-playing video and can keep advancing through the available list.
+
+**File:** Watch page component (frontend)
+
+---
+
+### 11. View count added — deliberate scope decision, not a bug
+
+**What:** `getVideoById` was updated to atomically increment `views` on every fetch:
+```js
+const video = await Video.findByIdAndUpdate(
+    videoId,
+    { $inc: { views: 1 } },
+    { returnDocument: "after" }
+).populate("owner", "username fullName avatar")
+```
+Used `$inc` specifically instead of a read-then-write pattern to avoid a race condition if multiple requests hit the same video concurrently.
+
+**Known limitation, accepted deliberately:** This increments on every single fetch — page refreshes, repeat visits, and autoplay-next navigations all count as a "view," with no deduplication window or minimum watch-time threshold. Real platforms have much more sophisticated view-counting logic; this is the intentionally simple, "correct-enough for this stage" version. Worth mentioning as a known tradeoff if asked in an interview, not something to over-engineer now.
+
+**File:** `video.controller.js` — `getVideoById`
+
+---
+
+---
+
+## Slice 3: Channel Pages + Subscriptions
+
+### 12. Subscription routes had swapped param mappings
+
+**Symptom:** Caught during review, before it caused a live bug.
+
+**Root cause:** `subscription.routes.js` mapped `/c/:channelId` to `getSubscribedChannels` and `/u/:subscriberId` to `getUserChannelSubscribers` — backwards from what each controller function actually expected in `req.params`. `getUserChannelSubscribers` reads `channelId`; `getSubscribedChannels` reads `subscriberId`. The route wiring didn't match.
+
+**Fix:**
+```js
+router.route("/c/:channelId").get(getUserChannelSubscribers).post(toggleSubscription);
+router.route("/u/:subscriberId").get(getSubscribedChannels);
+```
+
+**File:** `subscription.routes.js`
+
+**Lesson:** Same root category as bug #9, just at a different layer — always trace param names from route → controller destructuring, don't assume they line up just because the file was written in one sitting.
+
+---
+
+### 13. `getUserChannelProfile` was locked behind `verifyJWT`, blocking public channel viewing
+
+**Symptom:** Caught during review — logged-out visitors couldn't view any channel page at all, even though the controller's own aggregation pipeline was already written defensively (`req.user?._id` with optional chaining) to handle an anonymous viewer.
+
+**Root cause:** The route had `verifyJWT` applied, even though channel pages should be public (same category as the original `video.routes.js` blanket-auth issue from Slice 1).
+
+**Fix:**
+```js
+router.route("/c/:username").get(getUserChannelProfile)  // verifyJWT removed
+```
+Confirmed the controller's existing `isSubscribed: { $cond: { if: {$in: [req.user?._id, ...]} } }` logic already degrades gracefully to `false` for anonymous viewers — no controller changes needed, only the route.
+
+**File:** `user.routes.js`
+
+---
+
+### 14. Watch history never populated — `req.user` was always `undefined` on the video-watch route
+
+**Symptom:** Added `$addToSet` logic to `getVideoById` to record watched videos to the user's `watchHistory`, but `GET /users/history` kept returning an empty array even while logged in with valid cookies.
+
+**Root cause:** `GET /videos/:videoId` is intentionally public (no `verifyJWT`) so logged-out users can watch videos — but `verifyJWT` is the *only* middleware that ever sets `req.user`. With it absent from this route, `req.user` was `undefined` for every request, logged in or not, so the `if (req.user?._id)` guard around the watch-history write could never be true.
+
+**Fix:** Added a new `verifyJWTOptional` middleware — checks for a token and attaches `req.user` if valid, but never blocks the request if the token is missing or invalid (unlike `verifyJWT`, which throws `401` on missing/invalid tokens):
+```js
+export const verifyJWTOptional = asyncHandler(async(req, _, next) => {
+    try {
+        const token = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer ", "")
+        if (!token) { req.user = null; return next() }
+        const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET)
+        const user = await User.findById(decodedToken?._id).select("-password -refreshToken")
+        req.user = user || null
+        next()
+    } catch (error) {
+        req.user = null
+        next()
+    }
+})
+```
+Applied to `GET /videos/:videoId` only — `getWatchHistory` itself correctly stays behind the strict `verifyJWT`, since history is private with no public-viewing use case.
+
+**Files:** `auth.middleware.js` (new export), `video.routes.js`
+
+**Lesson:** "Public route with optional personalization for logged-in users" is a distinct auth pattern from both "fully public" and "fully protected" — it needs its own middleware, not a workaround bolted onto either extreme. Good one to be able to explain in interviews.
+
+---
+
+---
+
+### 15. Nested `<a>` tags in `VideoCard` broke navigation unpredictably
+
+**Symptom:** Clicking a video card from the home feed sometimes led to a broken/stuck Watch page. React console warning: `<a> cannot be a descendant of <a>`.
+
+**Root cause:** `VideoCard` was structured as an outer `<Link to="/watch/:id">` wrapping the whole card, with an inner `<Link to="/channel/:username">` for the channel avatar/name nested inside it. This is invalid HTML — anchors cannot contain anchors — and browsers handle the resulting malformed DOM unpredictably. The original implementation tried to work around the resulting double-navigation with `e.stopPropagation()` on the inner link's click handler, which suppressed one symptom (both links firing on click) but did nothing to fix the invalid nesting itself.
+
+**Fix (root cause, not the stopPropagation patch):** Restructured `VideoCard` so no anchor contains another:
+- Outer wrapper changed to a plain `<div>` (not a `Link`)
+- Thumbnail area became its own standalone `<Link to="/watch/:videoId">`
+- Title became a separate sibling `<Link to="/watch/:videoId">`
+- Channel avatar/name became a separate sibling `<Link to="/channel/:username">`
+- All `stopPropagation()` calls removed — no longer needed since there's no nesting to suppress
+- Thumbnail link given `tabIndex={-1} aria-hidden="true"` so keyboard users land on the title link (which has a proper `aria-label`) instead of a redundant duplicate tab stop
+
+**File:** `VideoCard.jsx`, `VideoCard.css` (frontend)
+
+**Lesson:** A JS-level workaround (`stopPropagation`) can mask a symptom of invalid HTML structure without fixing the structure itself. When React logs a DOM-validity warning, treat it as a structural defect to fix, not a warning to silence.
+
+---
+
+### 16. View count still incrementing by 2 — StrictMode double-invocation, and the "fix" attempt broke video loading entirely
+
+**Symptom:** Video views incremented by 2 per watch instead of 1.
+
+**Root cause:** React's `<StrictMode>` intentionally double-invokes effects in development (mount → cleanup → mount again) to help surface side-effect bugs. The Watch page's video-fetch effect had no guard against this, so `GET /videos/:videoId` (which atomically increments views server-side) fired twice per real page visit.
+
+**First attempted fix (rejected):** Removing `<StrictMode>` entirely from `main.jsx`. This would have silenced the symptom but disabled StrictMode's other dev-time safety checks across the whole app, not just this one effect — too blunt a fix for what it solved.
+
+**Second attempt — `fetchedForRef` guard, revealed a deeper bug:** A `useRef` keyed to `videoId` (rather than a plain boolean) was used to guard against duplicate fetch calls. This introduced a **new, more serious bug**: the guard's underlying `cancelled` flag was a per-closure `let` variable, but StrictMode's cleanup function closed over and set `cancelled = true` on the *first* (intentionally-discarded) effect run. Because the guard prevented a *second* fetch call from firing at all, the *legitimate* fetch's own `.then()`/`.finally()` handlers still checked that same poisoned `cancelled` flag — saw `true` — and silently discarded a fully successful response. Net effect: `isLoading` never got set to `false`, the loading skeleton stayed on screen permanently, and no `<video>` element ever mounted, even though the network request itself succeeded with correct data (confirmed via Network tab).
+
+**Actual fix:** Replaced the per-closure `let cancelled` with a `cancelRef` (`useRef`) shared across invocations, and explicitly reset `cancelRef.current = false` inside the guard's early-return path — undoing the stale cleanup signal before the legitimate fetch's promise resolves. This correctly distinguishes "StrictMode noise" from "a real unmount/navigation happened," so genuine stale-response protection (e.g. user navigates away mid-fetch) still works, while the false-positive discard on first load does not.
+
+**Files:** `Watch.jsx` (frontend)
+
+**Lesson:** Guarding against duplicate *calls* and guarding against *stale responses* are two different concerns that can silently interfere with each other if they share the same flag. A fix that "sounds right" in description should still be verified against actual DOM/network evidence — this one required inspecting the Elements panel (confirmed no `<video>` tag existed) before the real bug was found.
+
+---
+
+### 17. `isSubscribed` always `false` on the Channel page/Watch page, even when actually subscribed
+
+**Symptom:** After subscribing to a channel, navigating away and back showed the Subscribe button reverted to "Subscribe" instead of "Subscribed" — and clicking it again would incorrectly toggle the subscription off.
+
+**Investigation:** Added temporary `console.log` debug lines through the full frontend chain (API response handler → state update → component prop) and confirmed the frontend was correctly receiving, storing, and passing along whatever the backend sent — the backend itself was returning `isSubscribed: false` unconditionally.
+
+**Root cause:** When `GET /users/c/:username` was originally made public (Slice 3, bug #13), `verifyJWT` was simply removed with nothing put in its place — unlike the equivalent fix on the video route, which correctly used the new `verifyJWTOptional` middleware. With no auth middleware at all on this route, `req.user` was always `undefined`, for every request, logged in or not. The controller's `isSubscribed` computation (`{$in: [req.user?._id, "$subscribers.subscriber"]}`) could therefore never match, and always evaluated to `false` — for everyone, unconditionally.
+
+**Fix:**
+```js
+router.route("/c/:username").get(verifyJWTOptional, getUserChannelProfile)
+```
+Same middleware already built for the video route in bug #14 — applied here too.
+
+**File:** `user.routes.js`
+
+**Lesson:** This is the second time the exact same category of bug appeared from the exact same root cause (a route made public by deleting `verifyJWT` outright, instead of swapping it for `verifyJWTOptional`). Any route that needs to be "public but personalized," now and in the future, must use `verifyJWTOptional` — never just remove auth entirely and assume `req.user` will be handled gracefully downstream.
+
+---
+
+## General lessons from this slice
+
+1. **The backend completing successfully doesn't mean the frontend received anything.** CORS failures, port mismatches, and interceptor bugs all happen *after* the server has already done its job — check both sides before assuming the backend is broken.
+2. **`select: false` and other schema-level changes ripple outward.** Any change to how a field is returned by default requires auditing every existing query that touches it.
+3. **Debug logging beats guessing.** The `refreshToken` crash looked like 3-4 different plausible bugs before temporary `console.log`s on `req.cookies`/`req.headers.cookie` gave a definitive answer.
+4. **Silent-refresh interceptors need an escape hatch.** Any "retry on 401 via refresh" pattern must explicitly exclude the refresh call itself from triggering another refresh attempt — otherwise a logged-out visitor can create a self-referential hang.
+5. **Ports drift silently.** Vite will happily jump to the next available port without loudly failing — always check the actual terminal output rather than assuming the default port is in use.
+
+---
+
+*Last updated: Slice 3 (Subscriptions + Channel pages, backend and frontend) fully complete and verified. Next: Slice 4 — Comments + Likes.*
+
+# Yeonix — Bugs Journal
+
+A running log of real bugs hit during development, their root causes, and how they were fixed. Kept for interview prep and future debugging reference — the goal is to remember *why* something broke, not just that it did.
+
+---
+
+## Slice 1: Authentication (Register / Login / Logout / Refresh)
+
+### 1. Cookies not persisting after login (`secure: true` hardcoded)
+
+**Symptom:** Login appeared to succeed in the network tab, but the session didn't persist — `getCurrentUser` would fail right after.
+
+**Root cause:** `loginUser` and `logoutUser` had `secure: true` hardcoded in the cookie options. Browsers refuse to store `secure` cookies over plain `http://localhost` (no TLS), so the `accessToken`/`refreshToken` cookies were silently dropped. `refreshAccessToken` already handled this correctly with an environment check — the other two functions just hadn't been updated to match.
+
+**Fix:** Made cookie options environment-aware in all three functions:
+```js
+const options = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax"
+}
+```
+Also required adding `NODE_ENV=development` to `.env`, since it wasn't set at all — meant `process.env.NODE_ENV` was `undefined`, which happened to evaluate safely but wasn't reliable long-term.
+
+**File:** `user.controller.js` — `loginUser`, `logoutUser`
+
+---
+
+### 2. `video.routes.js` blocked public video browsing
+
+**Symptom:** N/A yet (caught during code review, before it caused a live bug).
+
+**Root cause:** `router.use(verifyJWT)` was applied globally at the top of the file, forcing auth on every video route — including `GET /` (list videos) and `GET /:videoId` (view a single video). A video platform needs logged-out users to browse/watch without an account.
+
+**Fix:** Removed the blanket `router.use(verifyJWT)` and applied `verifyJWT` per-route, only on routes that mutate data (create, update, delete, toggle-publish).
+
+**File:** `video.routes.js`
+
+---
+
+### 3. Missing global error-handling middleware
+
+**Symptom:** N/A yet (caught during code review).
+
+**Root cause:** `asyncHandler` forwards errors via `next(err)`, but `app.js` had no error-handling middleware registered to catch them — so thrown `ApiError`s would fall through to Express's default HTML error page instead of returning the app's structured JSON (`{success, message, errors, data}`). This would have broken every frontend error-handling call (`err.response?.data?.message`).
+
+**Fix:** Added a centralized error handler at the end of `app.js`, after all routes, that checks `instanceof ApiError` and returns consistent JSON; falls back to a generic 500 for unexpected errors.
+
+**File:** `app.js`
+
+---
+
+### 4. Registration succeeded on backend, but frontend showed "Network error: Cannot reach the server"
+
+**Symptom:** User + Cloudinary avatar were both created successfully (visible in MongoDB Atlas and Cloudinary), but the frontend never received a response — showed a generic network error.
+
+**Initial (wrong) hypothesis:** Suspected `nodemon` was restarting mid-request because multer writes/deletes files inside `public/temp/`, which nodemon might interpret as a source change. Checked terminal logs — no `[nodemon] restarting` message appeared, so this was ruled out.
+
+**Actual root cause:** `CORS_ORIGIN` in `.env` was set to `http://localhost:5173`, but Vite was actually running on `http://localhost:5174` (port 5173 was already occupied by a leftover process). The origin mismatch caused the browser to block the response entirely under CORS policy — the request completed server-side, but the browser never handed the response back to the frontend JS.
+
+**Fix:** Freed port 5173 (`netstat -ano | findstr :5173` → `taskkill /PID <pid> /F`) so Vite could consistently bind to the same port that `.env`'s `CORS_ORIGIN` expected. (Alternative fix would have been updating `CORS_ORIGIN` to match whatever port Vite actually used.)
+
+**Lesson:** A backend fully completing its work is not proof that the frontend received anything — CORS failures happen entirely in the browser, after the server has already done its job.
+
+---
+
+### 5. `CORS_ORIGIN=*` in `.env`
+
+**Symptom:** Would have caused the same class of failure as bug #4, but caught before it caused a live issue.
+
+**Root cause:** `app.js` uses `credentials: true` in its CORS config (required for cookie-based auth), but the CORS spec explicitly forbids combining `Access-Control-Allow-Credentials: true` with a wildcard `Access-Control-Allow-Origin: *`. Browsers reject this combination outright.
+
+**Fix:** Set `CORS_ORIGIN` to the exact frontend origin (`http://localhost:5173` in dev; will be the deployed Vercel URL in production).
+
+**File:** `.env`
+
+---
+
+### 6. Login threw `500 Internal Server Error` — `bcrypt.compare` given `undefined`
+
+**Symptom:** Registration worked, but logging in with valid credentials returned a `500`.
+
+**Root cause:** Added `select: false` to the `password` field in `user.model.js` (correct hardening — prevents password hashes from leaking on normal queries), but didn't update `loginUser` to explicitly re-include the password field when looking up the user for authentication. `User.findOne(...)` returned a user object with `password` excluded, so `bcrypt.compare(password, undefined)` threw `Error: data and hash arguments required`.
+
+**Fix:**
+```js
+const user = await User.findOne({
+    $or: [{username}, {email}]
+}).select("+password")
+```
+
+**File:** `user.controller.js` — `loginUser`
+
+**Lesson:** Adding `select: false` to a schema field is a "spooky action at a distance" change — every existing query that relied on that field being present by default needs to be audited and updated.
+
+---
+
+### 7. `TypeError: Cannot read properties of undefined (reading 'refreshToken')` in `refreshAccessToken`
+
+**Symptom:** Backend terminal repeatedly crashed with this error, seemingly at random, even when nothing looked wrong in the UI.
+
+**Investigation:** Ruled out several wrong leads before finding it:
+- Not caused by `select: false` (different code path than bug #6)
+- Not a zombie/duplicate process on port 8000 (`netstat -ano | findstr :8000` showed only one listener)
+- Confirmed via temporary debug logging (`console.log(req.cookies)`, `console.log(req.headers.cookie)`) that `req.cookies` really was present as an object — just without an `accessToken`/`refreshToken` key, since the user was logged out
+
+**Actual root cause — a deadlock in the frontend's axios interceptor, not a backend bug at all:**
+1. `AuthContext` calls `getCurrentUser()` on every app load, even while logged out.
+2. Backend correctly returns `401`.
+3. The axios response interceptor catches *any* `401` and tries to silently refresh via `POST /users/refresh-token`.
+4. Since the user was never logged in, there's no refresh token either — that call *also* returns `401`.
+5. Because the refresh call was made through the same `axiosInstance`, it passed back through the same interceptor. The interceptor saw another `401`, and — since `isRefreshing` was already `true` — queued this request to wait for `processQueue()`.
+6. But `processQueue()` was only ever going to be called by the *same* refresh flow that was now stuck waiting on this queued promise. It was waiting on itself. Permanent hang, no crash, no error — just infinite loading on the frontend.
+
+**Fix (frontend):** Added a check in the interceptor to detect when the *failing* request is the refresh-token call itself, and short-circuit straight to "session expired" instead of attempting to queue/retry it:
+```js
+const isRefreshCall = originalRequest?.url?.includes('/users/refresh-token');
+
+if (error.response?.status === 401 && isRefreshCall) {
+    isRefreshing = false;
+    processQueue(error);
+    window.dispatchEvent(new CustomEvent('yeonix:session-expired'));
+    return Promise.reject(error);
+}
+```
+
+**Fix (backend, defensive hardening — kept regardless of the frontend fix):**
+```js
+const incomingRefreshToken = req.cookies?.refreshToken || req.body?.refreshToken
+```
+A publicly-reachable endpoint (hit by every anonymous visitor on page load) should never assume `req.cookies` or `req.body` are defined — it should fail cleanly with a `401`, not crash.
+
+**File:** `axiosInstance.js` (frontend), `user.controller.js` — `refreshAccessToken` (backend)
+
+**Lesson:** A `401` from a *refresh* endpoint means "there is no session to refresh" — it's terminal, not retryable. Treating it the same as a `401` from any other endpoint creates a self-referential retry loop.
+
+---
+
+## Minor cleanups (non-breaking, done alongside the above)
+
+- **Stray `undefined` printed to terminal on every login:** `console.log(email)` left in `loginUser` from original course boilerplate — printed `undefined` whenever logging in via username instead of email. Removed.
+- **Mongoose deprecation warning:** `{ new: true }` on `findOneAndUpdate` calls is deprecated in favor of `{ returnDocument: 'after' }`. Updated in `logoutUser`, `updateAccountDetails`, `updateUserAvatar`, `updateUserCoverImage`.
+- **Multer filename collisions:** `file.originalname` used directly as the saved filename risked two concurrent uploads overwriting each other. Fixed with a unique prefix (`Date.now() + random suffix`).
+- **`extented: true` typo** in `express.urlencoded()` config in `app.js` — corrected to `extended: true`.
+- **`fs.unlinkSync` could throw** in `cloudinary.js`'s catch block if the temp file was already gone — wrapped with `fs.existsSync()` check first.
+
+---
+
+## Slice 2: Video Core (Upload / Feed / Search / Watch)
+
+### 8. `video.routes.js` had the same blanket-auth issue as before
+
+**Symptom:** N/A yet (caught during initial review, same as Slice 1 bug #2, since this file was scaffolded from the same course template).
+
+**Root cause:** `router.use(verifyJWT)` applied globally, blocking public video browsing.
+
+**Fix:** Applied `verifyJWT` per-route, only on `POST /`, `PATCH /:videoId`, `DELETE /:videoId`, and `PATCH /toggle/publish/:videoId`. `GET /` and `GET /:videoId` stayed public.
+
+**File:** `video.routes.js`
+
+---
+
+### 9. `TypeError: Cannot destructure property 'title' of 'req.body' as it is undefined` in `updateVideo`
+
+**Symptom:** Sending a `PATCH` request to update a video with a completely empty `multipart/form-data` body returned a raw `500` instead of the expected clean `400` validation error.
+
+**Root cause:** Same category of bug as Slice 1's `refreshToken` crash — code assumed `req.body` would always be at least `{}`. When multer parses a genuinely empty multipart body, `req.body` comes back `undefined` rather than an empty object, so `const { title, description } = req.body` threw before any of the function's own validation logic could run.
+
+**Fix:**
+```js
+const { title, description } = req.body || {}
+```
+Applied to both `updateVideo` and defensively to `publishAVideo` for consistency.
+
+**File:** `video.controller.js` — `updateVideo`, `publishAVideo`
+
+**Lesson (recurring):** This is the third time this exact pattern has appeared (`req.cookies` in Slice 1, now `req.body` here). Any destructuring of an Express request property (`req.body`, `req.cookies`, `req.params`, `req.query`) should default to `|| {}` unless there's a guarantee upstream (e.g. required middleware) that it will always be populated.
+
+---
+
+### 10. Autoplay-next feature looped between only 2 videos instead of advancing through the full list
+
+**Symptom:** After the first video finished and auto-advanced to a second video, it would then loop back to the first video indefinitely (A → B → A → B), even with 4+ videos in the database.
+
+**Root cause:** The "related videos" list on the Watch page was being fetched once on initial mount and not refreshed when navigating to a new video via autoplay-next — so the "exclude current video" check was comparing against a stale video ID rather than whatever was actually playing at that moment.
+
+**Fix:** Ensured the related-videos fetch and the "current video" reference both update whenever the video ID changes (not just on initial mount), so up-next selection always excludes the actual currently-playing video and can keep advancing through the available list.
+
+**File:** Watch page component (frontend)
+
+---
+
+### 11. View count added — deliberate scope decision, not a bug
+
+**What:** `getVideoById` was updated to atomically increment `views` on every fetch:
+```js
+const video = await Video.findByIdAndUpdate(
+    videoId,
+    { $inc: { views: 1 } },
+    { returnDocument: "after" }
+).populate("owner", "username fullName avatar")
+```
+Used `$inc` specifically instead of a read-then-write pattern to avoid a race condition if multiple requests hit the same video concurrently.
+
+**Known limitation, accepted deliberately:** This increments on every single fetch — page refreshes, repeat visits, and autoplay-next navigations all count as a "view," with no deduplication window or minimum watch-time threshold. Real platforms have much more sophisticated view-counting logic; this is the intentionally simple, "correct-enough for this stage" version. Worth mentioning as a known tradeoff if asked in an interview, not something to over-engineer now.
+
+**File:** `video.controller.js` — `getVideoById`
+
+---
+
+---
+
+## Slice 3: Channel Pages + Subscriptions
+
+### 12. Subscription routes had swapped param mappings
+
+**Symptom:** Caught during review, before it caused a live bug.
+
+**Root cause:** `subscription.routes.js` mapped `/c/:channelId` to `getSubscribedChannels` and `/u/:subscriberId` to `getUserChannelSubscribers` — backwards from what each controller function actually expected in `req.params`. `getUserChannelSubscribers` reads `channelId`; `getSubscribedChannels` reads `subscriberId`. The route wiring didn't match.
+
+**Fix:**
+```js
+router.route("/c/:channelId").get(getUserChannelSubscribers).post(toggleSubscription);
+router.route("/u/:subscriberId").get(getSubscribedChannels);
+```
+
+**File:** `subscription.routes.js`
+
+**Lesson:** Same root category as bug #9, just at a different layer — always trace param names from route → controller destructuring, don't assume they line up just because the file was written in one sitting.
+
+---
+
+### 13. `getUserChannelProfile` was locked behind `verifyJWT`, blocking public channel viewing
+
+**Symptom:** Caught during review — logged-out visitors couldn't view any channel page at all, even though the controller's own aggregation pipeline was already written defensively (`req.user?._id` with optional chaining) to handle an anonymous viewer.
+
+**Root cause:** The route had `verifyJWT` applied, even though channel pages should be public (same category as the original `video.routes.js` blanket-auth issue from Slice 1).
+
+**Fix:**
+```js
+router.route("/c/:username").get(getUserChannelProfile)  // verifyJWT removed
+```
+Confirmed the controller's existing `isSubscribed: { $cond: { if: {$in: [req.user?._id, ...]} } }` logic already degrades gracefully to `false` for anonymous viewers — no controller changes needed, only the route.
+
+**File:** `user.routes.js`
+
+---
+
+### 14. Watch history never populated — `req.user` was always `undefined` on the video-watch route
+
+**Symptom:** Added `$addToSet` logic to `getVideoById` to record watched videos to the user's `watchHistory`, but `GET /users/history` kept returning an empty array even while logged in with valid cookies.
+
+**Root cause:** `GET /videos/:videoId` is intentionally public (no `verifyJWT`) so logged-out users can watch videos — but `verifyJWT` is the *only* middleware that ever sets `req.user`. With it absent from this route, `req.user` was `undefined` for every request, logged in or not, so the `if (req.user?._id)` guard around the watch-history write could never be true.
+
+**Fix:** Added a new `verifyJWTOptional` middleware — checks for a token and attaches `req.user` if valid, but never blocks the request if the token is missing or invalid (unlike `verifyJWT`, which throws `401` on missing/invalid tokens):
+```js
+export const verifyJWTOptional = asyncHandler(async(req, _, next) => {
+    try {
+        const token = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer ", "")
+        if (!token) { req.user = null; return next() }
+        const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET)
+        const user = await User.findById(decodedToken?._id).select("-password -refreshToken")
+        req.user = user || null
+        next()
+    } catch (error) {
+        req.user = null
+        next()
+    }
+})
+```
+Applied to `GET /videos/:videoId` only — `getWatchHistory` itself correctly stays behind the strict `verifyJWT`, since history is private with no public-viewing use case.
+
+**Files:** `auth.middleware.js` (new export), `video.routes.js`
+
+**Lesson:** "Public route with optional personalization for logged-in users" is a distinct auth pattern from both "fully public" and "fully protected" — it needs its own middleware, not a workaround bolted onto either extreme. Good one to be able to explain in interviews.
+
+---
+
+---
+
+### 15. Nested `<a>` tags in `VideoCard` broke navigation unpredictably
+
+**Symptom:** Clicking a video card from the home feed sometimes led to a broken/stuck Watch page. React console warning: `<a> cannot be a descendant of <a>`.
+
+**Root cause:** `VideoCard` was structured as an outer `<Link to="/watch/:id">` wrapping the whole card, with an inner `<Link to="/channel/:username">` for the channel avatar/name nested inside it. This is invalid HTML — anchors cannot contain anchors — and browsers handle the resulting malformed DOM unpredictably. The original implementation tried to work around the resulting double-navigation with `e.stopPropagation()` on the inner link's click handler, which suppressed one symptom (both links firing on click) but did nothing to fix the invalid nesting itself.
+
+**Fix (root cause, not the stopPropagation patch):** Restructured `VideoCard` so no anchor contains another:
+- Outer wrapper changed to a plain `<div>` (not a `Link`)
+- Thumbnail area became its own standalone `<Link to="/watch/:videoId">`
+- Title became a separate sibling `<Link to="/watch/:videoId">`
+- Channel avatar/name became a separate sibling `<Link to="/channel/:username">`
+- All `stopPropagation()` calls removed — no longer needed since there's no nesting to suppress
+- Thumbnail link given `tabIndex={-1} aria-hidden="true"` so keyboard users land on the title link (which has a proper `aria-label`) instead of a redundant duplicate tab stop
+
+**File:** `VideoCard.jsx`, `VideoCard.css` (frontend)
+
+**Lesson:** A JS-level workaround (`stopPropagation`) can mask a symptom of invalid HTML structure without fixing the structure itself. When React logs a DOM-validity warning, treat it as a structural defect to fix, not a warning to silence.
+
+---
+
+### 16. View count still incrementing by 2 — StrictMode double-invocation, and the "fix" attempt broke video loading entirely
+
+**Symptom:** Video views incremented by 2 per watch instead of 1.
+
+**Root cause:** React's `<StrictMode>` intentionally double-invokes effects in development (mount → cleanup → mount again) to help surface side-effect bugs. The Watch page's video-fetch effect had no guard against this, so `GET /videos/:videoId` (which atomically increments views server-side) fired twice per real page visit.
+
+**First attempted fix (rejected):** Removing `<StrictMode>` entirely from `main.jsx`. This would have silenced the symptom but disabled StrictMode's other dev-time safety checks across the whole app, not just this one effect — too blunt a fix for what it solved.
+
+**Second attempt — `fetchedForRef` guard, revealed a deeper bug:** A `useRef` keyed to `videoId` (rather than a plain boolean) was used to guard against duplicate fetch calls. This introduced a **new, more serious bug**: the guard's underlying `cancelled` flag was a per-closure `let` variable, but StrictMode's cleanup function closed over and set `cancelled = true` on the *first* (intentionally-discarded) effect run. Because the guard prevented a *second* fetch call from firing at all, the *legitimate* fetch's own `.then()`/`.finally()` handlers still checked that same poisoned `cancelled` flag — saw `true` — and silently discarded a fully successful response. Net effect: `isLoading` never got set to `false`, the loading skeleton stayed on screen permanently, and no `<video>` element ever mounted, even though the network request itself succeeded with correct data (confirmed via Network tab).
+
+**Actual fix:** Replaced the per-closure `let cancelled` with a `cancelRef` (`useRef`) shared across invocations, and explicitly reset `cancelRef.current = false` inside the guard's early-return path — undoing the stale cleanup signal before the legitimate fetch's promise resolves. This correctly distinguishes "StrictMode noise" from "a real unmount/navigation happened," so genuine stale-response protection (e.g. user navigates away mid-fetch) still works, while the false-positive discard on first load does not.
+
+**Files:** `Watch.jsx` (frontend)
+
+**Lesson:** Guarding against duplicate *calls* and guarding against *stale responses* are two different concerns that can silently interfere with each other if they share the same flag. A fix that "sounds right" in description should still be verified against actual DOM/network evidence — this one required inspecting the Elements panel (confirmed no `<video>` tag existed) before the real bug was found.
+
+---
+
+### 17. `isSubscribed` always `false` on the Channel page/Watch page, even when actually subscribed
+
+**Symptom:** After subscribing to a channel, navigating away and back showed the Subscribe button reverted to "Subscribe" instead of "Subscribed" — and clicking it again would incorrectly toggle the subscription off.
+
+**Investigation:** Added temporary `console.log` debug lines through the full frontend chain (API response handler → state update → component prop) and confirmed the frontend was correctly receiving, storing, and passing along whatever the backend sent — the backend itself was returning `isSubscribed: false` unconditionally.
+
+**Root cause:** When `GET /users/c/:username` was originally made public (Slice 3, bug #13), `verifyJWT` was simply removed with nothing put in its place — unlike the equivalent fix on the video route, which correctly used the new `verifyJWTOptional` middleware. With no auth middleware at all on this route, `req.user` was always `undefined`, for every request, logged in or not. The controller's `isSubscribed` computation (`{$in: [req.user?._id, "$subscribers.subscriber"]}`) could therefore never match, and always evaluated to `false` — for everyone, unconditionally.
+
+**Fix:**
+```js
+router.route("/c/:username").get(verifyJWTOptional, getUserChannelProfile)
+```
+Same middleware already built for the video route in bug #14 — applied here too.
+
+**File:** `user.routes.js`
+
+**Lesson:** This is the second time the exact same category of bug appeared from the exact same root cause (a route made public by deleting `verifyJWT` outright, instead of swapping it for `verifyJWTOptional`). Any route that needs to be "public but personalized," now and in the future, must use `verifyJWTOptional` — never just remove auth entirely and assume `req.user` will be handled gracefully downstream.
+
+---
+
+---
+
+## Slice 4: Comments + Likes
+
+### 18. `comment.routes.js` had the same blanket-auth issue, again
+
+**Symptom:** Caught during review, before it caused a live bug.
+
+**Root cause:** Same recurring pattern as bugs #2 and #13 — `router.use(verifyJWT)` applied globally, blocking public comment viewing. Comments on a video should be readable by logged-out visitors, same as the video itself; only posting/editing/deleting requires auth.
+
+**Fix:**
+```js
+router.route("/:videoId").get(verifyJWTOptional, getVideoComments).post(verifyJWT, addComment);
+router.route("/c/:commentId").delete(verifyJWT, deleteComment).patch(verifyJWT, updateComment);
+```
+Used `verifyJWTOptional` (not fully public) on the `GET` specifically, anticipating a need to know the viewer's identity for "is this my comment" edit/delete button visibility later.
+
+**File:** `comment.routes.js`
+
+**Note:** `like.routes.js` was reviewed and correctly left with a blanket `router.use(verifyJWT)` — unlike comments, there's no legitimate logged-out use case for toggling or viewing likes, so no change was needed there.
+
+---
+
+### 19. A confusing, traceless `500` — a syntax typo was masking a real, fixable error underneath
+
+**Symptom:** `POST /comments/:videoId` (`addComment`) consistently returned a generic `500 Internal Server Error`, but — highly unusually — **nothing printed in the backend terminal at all**, even across multiple full server restarts and after ruling out a zombie process on port 8000 (`netstat` showed only one listener).
+
+**Investigation:** Since the usual approach (check the terminal trace) produced nothing, added an unmissable raw `console.log("!!! addComment was called !!!", ...)` as the very first line of the function to establish whether the request was even reaching the controller at all.
+
+**Root cause, part 1:** A stray typo — `if (!content?.trim()) {p` — an extra `p` character sitting right after the opening brace. This is a genuine JavaScript syntax error, which broke module parsing in a way that didn't produce a normal, traceable stack trace the way a runtime error would.
+
+**Root cause, part 2 (revealed only after fixing the typo):** Once the syntax error was fixed and the debug log successfully appeared, the *real* underlying bug became visible: `comment.controller.js` imported `mongoose` but not `isValidObjectId` specifically —
+```js
+import mongoose from "mongoose"   // missing { isValidObjectId }
+```
+— so calling `isValidObjectId(videoId)` threw `ReferenceError: isValidObjectId is not defined`.
+
+**Fix:**
+```js
+import mongoose, {isValidObjectId} from "mongoose"
+```
+Matching the import pattern already used correctly in `video.controller.js` and `subscription.controller.js`.
+
+**File:** `comment.controller.js`
+
+**Lesson:** Not every bug leaves a helpful trace. A syntax error can break module loading in ways that produce confusing, silent failures instead of a clean crash — when a normally-reliable debugging method (checking the terminal trace) suddenly produces nothing, the next step is to add an unmistakable, impossible-to-miss log line to establish ground truth about whether code is executing at all, rather than continuing to guess at runtime causes for a problem that was actually happening at parse time.
+
+---
+
+---
+
+### 20. Sidebar overlapping page content, not collapsing correctly
+
+**Symptom:** On the new Liked Videos page (and confirmed also on Home), the sidebar overlapped/covered video cards instead of sitting beside them, and didn't respond to whatever normally toggles it — video cards were cut off underneath it.
+
+**Root cause:** Not fully diagnosed in detail (handled by Antigravity directly), but confirmed to be a pre-existing layout fragility that became visible once a new page (`LikedVideos`) was added without the same layout wrapper/structure as `Home`/`Watch`.
+
+**Fix:** Sidebar positioning/toggle logic corrected to behave consistently across Home, Watch, Channel, and Liked Videos pages.
+
+**File:** Sidebar component + layout wrappers (frontend)
+
+**Lesson:** A layout bug can hide in existing pages until a new page's structure exposes it — worth spot-checking shared layout components (header, sidebar) whenever a new top-level page is added, not just testing the new page in isolation.
+
+---
+
+### 21. Comment edit/delete options never appeared for the comment's own author
+
+**Symptom:** Logged in as a comment's author, no Edit/Delete UI appeared on that comment — only the like button showed, for every comment regardless of ownership.
+
+**Root cause:** An ownership-comparison bug in `CommentItem` (specific mismatch not detailed in the journal at the time — handled directly by Antigravity after being asked to show the current logic before fixing, per this project's now-standard practice of not accepting blind patches).
+
+**Fix:** Corrected the ownership check so Edit/Delete options render correctly when the logged-in user matches the comment's `owner` field.
+
+**File:** `CommentItem.jsx` (frontend)
+
+---
+
+### 22. Feature addition: video owners can delete (not edit) any comment on their own video
+
+**What:** Extended `deleteComment` so that in addition to a comment's author being able to delete their own comment, the *video's owner* can also delete any comment on their own video — standard moderation capability on real video platforms. Editing intentionally stays restricted to the comment's author only; only deletion was extended.
+
+**Backend change:**
+```js
+const video = await Video.findById(comment.video)
+const isCommentOwner = comment.owner.toString() === req.user._id.toString()
+const isVideoOwner = video?.owner?.toString() === req.user._id.toString()
+
+if (!isCommentOwner && !isVideoOwner) {
+    throw new ApiError(403, "You are not authorized to delete this comment")
+}
+```
+Required importing `Video` into `comment.controller.js`.
+
+**Frontend change:** `CommentItem`'s delete-option visibility condition extended to show if the current user is either the comment's author OR the video's owner (video owner id passed down from the Watch page, where it's already available from the video fetch).
+
+**Files:** `comment.controller.js` (backend), `CommentItem.jsx` / `CommentSection.jsx` (frontend)
+
+**Lesson:** This was a deliberate feature addition, not a bug fix — a good example of recognizing a real platform pattern (two-tier comment permissions: author edit/delete vs. owner moderate-delete) and implementing it as a small, clean extension of existing authorization logic rather than a parallel system.
+
+---
+
+### 23. Delete confirmation used the browser's native `window.confirm()` — looked unprofessional, out of place
+
+**Symptom:** Clicking Delete on a comment triggered a raw browser alert dialog (unstyled, showing the literal `localhost:5173 says...` browser chrome) instead of an in-app modal matching the rest of the design.
+
+**Root cause:** The initial implementation used `window.confirm()` directly rather than a custom UI component — functional, but visually inconsistent with the app's actual design system.
+
+**Fix:** Built a reusable `ConfirmDialog` component (accepting `title`, `message`, `confirmText`, `cancelText`, `onConfirm`, `onCancel` props) styled to match the app's existing dark theme and button conventions, dismissible via backdrop click or Cancel button. Replaced the `window.confirm()` call in the comment-delete flow with this component.
+
+**File:** New `ConfirmDialog` component (frontend), comment delete flow updated to use it
+
+**Lesson:** Built generically from the start (not hardcoded to comments) so it can be reused for future destructive actions (deleting videos, unsubscribing, etc.) without rebuilding the same pattern again.
+
+---
+
+## General lessons from this slice
+
+1. **The backend completing successfully doesn't mean the frontend received anything.** CORS failures, port mismatches, and interceptor bugs all happen *after* the server has already done its job — check both sides before assuming the backend is broken.
+2. **`select: false` and other schema-level changes ripple outward.** Any change to how a field is returned by default requires auditing every existing query that touches it.
+3. **Debug logging beats guessing.** The `refreshToken` crash looked like 3-4 different plausible bugs before temporary `console.log`s on `req.cookies`/`req.headers.cookie` gave a definitive answer.
+4. **Silent-refresh interceptors need an escape hatch.** Any "retry on 401 via refresh" pattern must explicitly exclude the refresh call itself from triggering another refresh attempt — otherwise a logged-out visitor can create a self-referential hang.
+5. **Ports drift silently.** Vite will happily jump to the next available port without loudly failing — always check the actual terminal output rather than assuming the default port is in use.
+
+---
+
+*Last updated: Slice 4 (Comments + Likes + Liked Videos page, with two-tier comment moderation) fully complete and verified. Next: Slice 5 — Playlists, Dashboard, Tweets (community posts) — or Slice 6 hardening pass, depending on priority.*
+
+# Yeonix — Bugs Journal
+
+A running log of real bugs hit during development, their root causes, and how they were fixed. Kept for interview prep and future debugging reference — the goal is to remember *why* something broke, not just that it did.
+
+---
+
+## Slice 1: Authentication (Register / Login / Logout / Refresh)
+
+### 1. Cookies not persisting after login (`secure: true` hardcoded)
+
+**Symptom:** Login appeared to succeed in the network tab, but the session didn't persist — `getCurrentUser` would fail right after.
+
+**Root cause:** `loginUser` and `logoutUser` had `secure: true` hardcoded in the cookie options. Browsers refuse to store `secure` cookies over plain `http://localhost` (no TLS), so the `accessToken`/`refreshToken` cookies were silently dropped. `refreshAccessToken` already handled this correctly with an environment check — the other two functions just hadn't been updated to match.
+
+**Fix:** Made cookie options environment-aware in all three functions:
+```js
+const options = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax"
+}
+```
+Also required adding `NODE_ENV=development` to `.env`, since it wasn't set at all — meant `process.env.NODE_ENV` was `undefined`, which happened to evaluate safely but wasn't reliable long-term.
+
+**File:** `user.controller.js` — `loginUser`, `logoutUser`
+
+---
+
+### 2. `video.routes.js` blocked public video browsing
+
+**Symptom:** N/A yet (caught during code review, before it caused a live bug).
+
+**Root cause:** `router.use(verifyJWT)` was applied globally at the top of the file, forcing auth on every video route — including `GET /` (list videos) and `GET /:videoId` (view a single video). A video platform needs logged-out users to browse/watch without an account.
+
+**Fix:** Removed the blanket `router.use(verifyJWT)` and applied `verifyJWT` per-route, only on routes that mutate data (create, update, delete, toggle-publish).
+
+**File:** `video.routes.js`
+
+---
+
+### 3. Missing global error-handling middleware
+
+**Symptom:** N/A yet (caught during code review).
+
+**Root cause:** `asyncHandler` forwards errors via `next(err)`, but `app.js` had no error-handling middleware registered to catch them — so thrown `ApiError`s would fall through to Express's default HTML error page instead of returning the app's structured JSON (`{success, message, errors, data}`). This would have broken every frontend error-handling call (`err.response?.data?.message`).
+
+**Fix:** Added a centralized error handler at the end of `app.js`, after all routes, that checks `instanceof ApiError` and returns consistent JSON; falls back to a generic 500 for unexpected errors.
+
+**File:** `app.js`
+
+---
+
+### 4. Registration succeeded on backend, but frontend showed "Network error: Cannot reach the server"
+
+**Symptom:** User + Cloudinary avatar were both created successfully (visible in MongoDB Atlas and Cloudinary), but the frontend never received a response — showed a generic network error.
+
+**Initial (wrong) hypothesis:** Suspected `nodemon` was restarting mid-request because multer writes/deletes files inside `public/temp/`, which nodemon might interpret as a source change. Checked terminal logs — no `[nodemon] restarting` message appeared, so this was ruled out.
+
+**Actual root cause:** `CORS_ORIGIN` in `.env` was set to `http://localhost:5173`, but Vite was actually running on `http://localhost:5174` (port 5173 was already occupied by a leftover process). The origin mismatch caused the browser to block the response entirely under CORS policy — the request completed server-side, but the browser never handed the response back to the frontend JS.
+
+**Fix:** Freed port 5173 (`netstat -ano | findstr :5173` → `taskkill /PID <pid> /F`) so Vite could consistently bind to the same port that `.env`'s `CORS_ORIGIN` expected. (Alternative fix would have been updating `CORS_ORIGIN` to match whatever port Vite actually used.)
+
+**Lesson:** A backend fully completing its work is not proof that the frontend received anything — CORS failures happen entirely in the browser, after the server has already done its job.
+
+---
+
+### 5. `CORS_ORIGIN=*` in `.env`
+
+**Symptom:** Would have caused the same class of failure as bug #4, but caught before it caused a live issue.
+
+**Root cause:** `app.js` uses `credentials: true` in its CORS config (required for cookie-based auth), but the CORS spec explicitly forbids combining `Access-Control-Allow-Credentials: true` with a wildcard `Access-Control-Allow-Origin: *`. Browsers reject this combination outright.
+
+**Fix:** Set `CORS_ORIGIN` to the exact frontend origin (`http://localhost:5173` in dev; will be the deployed Vercel URL in production).
+
+**File:** `.env`
+
+---
+
+### 6. Login threw `500 Internal Server Error` — `bcrypt.compare` given `undefined`
+
+**Symptom:** Registration worked, but logging in with valid credentials returned a `500`.
+
+**Root cause:** Added `select: false` to the `password` field in `user.model.js` (correct hardening — prevents password hashes from leaking on normal queries), but didn't update `loginUser` to explicitly re-include the password field when looking up the user for authentication. `User.findOne(...)` returned a user object with `password` excluded, so `bcrypt.compare(password, undefined)` threw `Error: data and hash arguments required`.
+
+**Fix:**
+```js
+const user = await User.findOne({
+    $or: [{username}, {email}]
+}).select("+password")
+```
+
+**File:** `user.controller.js` — `loginUser`
+
+**Lesson:** Adding `select: false` to a schema field is a "spooky action at a distance" change — every existing query that relied on that field being present by default needs to be audited and updated.
+
+---
+
+### 7. `TypeError: Cannot read properties of undefined (reading 'refreshToken')` in `refreshAccessToken`
+
+**Symptom:** Backend terminal repeatedly crashed with this error, seemingly at random, even when nothing looked wrong in the UI.
+
+**Investigation:** Ruled out several wrong leads before finding it:
+- Not caused by `select: false` (different code path than bug #6)
+- Not a zombie/duplicate process on port 8000 (`netstat -ano | findstr :8000` showed only one listener)
+- Confirmed via temporary debug logging (`console.log(req.cookies)`, `console.log(req.headers.cookie)`) that `req.cookies` really was present as an object — just without an `accessToken`/`refreshToken` key, since the user was logged out
+
+**Actual root cause — a deadlock in the frontend's axios interceptor, not a backend bug at all:**
+1. `AuthContext` calls `getCurrentUser()` on every app load, even while logged out.
+2. Backend correctly returns `401`.
+3. The axios response interceptor catches *any* `401` and tries to silently refresh via `POST /users/refresh-token`.
+4. Since the user was never logged in, there's no refresh token either — that call *also* returns `401`.
+5. Because the refresh call was made through the same `axiosInstance`, it passed back through the same interceptor. The interceptor saw another `401`, and — since `isRefreshing` was already `true` — queued this request to wait for `processQueue()`.
+6. But `processQueue()` was only ever going to be called by the *same* refresh flow that was now stuck waiting on this queued promise. It was waiting on itself. Permanent hang, no crash, no error — just infinite loading on the frontend.
+
+**Fix (frontend):** Added a check in the interceptor to detect when the *failing* request is the refresh-token call itself, and short-circuit straight to "session expired" instead of attempting to queue/retry it:
+```js
+const isRefreshCall = originalRequest?.url?.includes('/users/refresh-token');
+
+if (error.response?.status === 401 && isRefreshCall) {
+    isRefreshing = false;
+    processQueue(error);
+    window.dispatchEvent(new CustomEvent('yeonix:session-expired'));
+    return Promise.reject(error);
+}
+```
+
+**Fix (backend, defensive hardening — kept regardless of the frontend fix):**
+```js
+const incomingRefreshToken = req.cookies?.refreshToken || req.body?.refreshToken
+```
+A publicly-reachable endpoint (hit by every anonymous visitor on page load) should never assume `req.cookies` or `req.body` are defined — it should fail cleanly with a `401`, not crash.
+
+**File:** `axiosInstance.js` (frontend), `user.controller.js` — `refreshAccessToken` (backend)
+
+**Lesson:** A `401` from a *refresh* endpoint means "there is no session to refresh" — it's terminal, not retryable. Treating it the same as a `401` from any other endpoint creates a self-referential retry loop.
+
+---
+
+## Minor cleanups (non-breaking, done alongside the above)
+
+- **Stray `undefined` printed to terminal on every login:** `console.log(email)` left in `loginUser` from original course boilerplate — printed `undefined` whenever logging in via username instead of email. Removed.
+- **Mongoose deprecation warning:** `{ new: true }` on `findOneAndUpdate` calls is deprecated in favor of `{ returnDocument: 'after' }`. Updated in `logoutUser`, `updateAccountDetails`, `updateUserAvatar`, `updateUserCoverImage`.
+- **Multer filename collisions:** `file.originalname` used directly as the saved filename risked two concurrent uploads overwriting each other. Fixed with a unique prefix (`Date.now() + random suffix`).
+- **`extented: true` typo** in `express.urlencoded()` config in `app.js` — corrected to `extended: true`.
+- **`fs.unlinkSync` could throw** in `cloudinary.js`'s catch block if the temp file was already gone — wrapped with `fs.existsSync()` check first.
+
+---
+
+## Slice 2: Video Core (Upload / Feed / Search / Watch)
+
+### 8. `video.routes.js` had the same blanket-auth issue as before
+
+**Symptom:** N/A yet (caught during initial review, same as Slice 1 bug #2, since this file was scaffolded from the same course template).
+
+**Root cause:** `router.use(verifyJWT)` applied globally, blocking public video browsing.
+
+**Fix:** Applied `verifyJWT` per-route, only on `POST /`, `PATCH /:videoId`, `DELETE /:videoId`, and `PATCH /toggle/publish/:videoId`. `GET /` and `GET /:videoId` stayed public.
+
+**File:** `video.routes.js`
+
+---
+
+### 9. `TypeError: Cannot destructure property 'title' of 'req.body' as it is undefined` in `updateVideo`
+
+**Symptom:** Sending a `PATCH` request to update a video with a completely empty `multipart/form-data` body returned a raw `500` instead of the expected clean `400` validation error.
+
+**Root cause:** Same category of bug as Slice 1's `refreshToken` crash — code assumed `req.body` would always be at least `{}`. When multer parses a genuinely empty multipart body, `req.body` comes back `undefined` rather than an empty object, so `const { title, description } = req.body` threw before any of the function's own validation logic could run.
+
+**Fix:**
+```js
+const { title, description } = req.body || {}
+```
+Applied to both `updateVideo` and defensively to `publishAVideo` for consistency.
+
+**File:** `video.controller.js` — `updateVideo`, `publishAVideo`
+
+**Lesson (recurring):** This is the third time this exact pattern has appeared (`req.cookies` in Slice 1, now `req.body` here). Any destructuring of an Express request property (`req.body`, `req.cookies`, `req.params`, `req.query`) should default to `|| {}` unless there's a guarantee upstream (e.g. required middleware) that it will always be populated.
+
+---
+
+### 10. Autoplay-next feature looped between only 2 videos instead of advancing through the full list
+
+**Symptom:** After the first video finished and auto-advanced to a second video, it would then loop back to the first video indefinitely (A → B → A → B), even with 4+ videos in the database.
+
+**Root cause:** The "related videos" list on the Watch page was being fetched once on initial mount and not refreshed when navigating to a new video via autoplay-next — so the "exclude current video" check was comparing against a stale video ID rather than whatever was actually playing at that moment.
+
+**Fix:** Ensured the related-videos fetch and the "current video" reference both update whenever the video ID changes (not just on initial mount), so up-next selection always excludes the actual currently-playing video and can keep advancing through the available list.
+
+**File:** Watch page component (frontend)
+
+---
+
+### 11. View count added — deliberate scope decision, not a bug
+
+**What:** `getVideoById` was updated to atomically increment `views` on every fetch:
+```js
+const video = await Video.findByIdAndUpdate(
+    videoId,
+    { $inc: { views: 1 } },
+    { returnDocument: "after" }
+).populate("owner", "username fullName avatar")
+```
+Used `$inc` specifically instead of a read-then-write pattern to avoid a race condition if multiple requests hit the same video concurrently.
+
+**Known limitation, accepted deliberately:** This increments on every single fetch — page refreshes, repeat visits, and autoplay-next navigations all count as a "view," with no deduplication window or minimum watch-time threshold. Real platforms have much more sophisticated view-counting logic; this is the intentionally simple, "correct-enough for this stage" version. Worth mentioning as a known tradeoff if asked in an interview, not something to over-engineer now.
+
+**File:** `video.controller.js` — `getVideoById`
+
+---
+
+---
+
+## Slice 3: Channel Pages + Subscriptions
+
+### 12. Subscription routes had swapped param mappings
+
+**Symptom:** Caught during review, before it caused a live bug.
+
+**Root cause:** `subscription.routes.js` mapped `/c/:channelId` to `getSubscribedChannels` and `/u/:subscriberId` to `getUserChannelSubscribers` — backwards from what each controller function actually expected in `req.params`. `getUserChannelSubscribers` reads `channelId`; `getSubscribedChannels` reads `subscriberId`. The route wiring didn't match.
+
+**Fix:**
+```js
+router.route("/c/:channelId").get(getUserChannelSubscribers).post(toggleSubscription);
+router.route("/u/:subscriberId").get(getSubscribedChannels);
+```
+
+**File:** `subscription.routes.js`
+
+**Lesson:** Same root category as bug #9, just at a different layer — always trace param names from route → controller destructuring, don't assume they line up just because the file was written in one sitting.
+
+---
+
+### 13. `getUserChannelProfile` was locked behind `verifyJWT`, blocking public channel viewing
+
+**Symptom:** Caught during review — logged-out visitors couldn't view any channel page at all, even though the controller's own aggregation pipeline was already written defensively (`req.user?._id` with optional chaining) to handle an anonymous viewer.
+
+**Root cause:** The route had `verifyJWT` applied, even though channel pages should be public (same category as the original `video.routes.js` blanket-auth issue from Slice 1).
+
+**Fix:**
+```js
+router.route("/c/:username").get(getUserChannelProfile)  // verifyJWT removed
+```
+Confirmed the controller's existing `isSubscribed: { $cond: { if: {$in: [req.user?._id, ...]} } }` logic already degrades gracefully to `false` for anonymous viewers — no controller changes needed, only the route.
+
+**File:** `user.routes.js`
+
+---
+
+### 14. Watch history never populated — `req.user` was always `undefined` on the video-watch route
+
+**Symptom:** Added `$addToSet` logic to `getVideoById` to record watched videos to the user's `watchHistory`, but `GET /users/history` kept returning an empty array even while logged in with valid cookies.
+
+**Root cause:** `GET /videos/:videoId` is intentionally public (no `verifyJWT`) so logged-out users can watch videos — but `verifyJWT` is the *only* middleware that ever sets `req.user`. With it absent from this route, `req.user` was `undefined` for every request, logged in or not, so the `if (req.user?._id)` guard around the watch-history write could never be true.
+
+**Fix:** Added a new `verifyJWTOptional` middleware — checks for a token and attaches `req.user` if valid, but never blocks the request if the token is missing or invalid (unlike `verifyJWT`, which throws `401` on missing/invalid tokens):
+```js
+export const verifyJWTOptional = asyncHandler(async(req, _, next) => {
+    try {
+        const token = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer ", "")
+        if (!token) { req.user = null; return next() }
+        const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET)
+        const user = await User.findById(decodedToken?._id).select("-password -refreshToken")
+        req.user = user || null
+        next()
+    } catch (error) {
+        req.user = null
+        next()
+    }
+})
+```
+Applied to `GET /videos/:videoId` only — `getWatchHistory` itself correctly stays behind the strict `verifyJWT`, since history is private with no public-viewing use case.
+
+**Files:** `auth.middleware.js` (new export), `video.routes.js`
+
+**Lesson:** "Public route with optional personalization for logged-in users" is a distinct auth pattern from both "fully public" and "fully protected" — it needs its own middleware, not a workaround bolted onto either extreme. Good one to be able to explain in interviews.
+
+---
+
+---
+
+### 15. Nested `<a>` tags in `VideoCard` broke navigation unpredictably
+
+**Symptom:** Clicking a video card from the home feed sometimes led to a broken/stuck Watch page. React console warning: `<a> cannot be a descendant of <a>`.
+
+**Root cause:** `VideoCard` was structured as an outer `<Link to="/watch/:id">` wrapping the whole card, with an inner `<Link to="/channel/:username">` for the channel avatar/name nested inside it. This is invalid HTML — anchors cannot contain anchors — and browsers handle the resulting malformed DOM unpredictably. The original implementation tried to work around the resulting double-navigation with `e.stopPropagation()` on the inner link's click handler, which suppressed one symptom (both links firing on click) but did nothing to fix the invalid nesting itself.
+
+**Fix (root cause, not the stopPropagation patch):** Restructured `VideoCard` so no anchor contains another:
+- Outer wrapper changed to a plain `<div>` (not a `Link`)
+- Thumbnail area became its own standalone `<Link to="/watch/:videoId">`
+- Title became a separate sibling `<Link to="/watch/:videoId">`
+- Channel avatar/name became a separate sibling `<Link to="/channel/:username">`
+- All `stopPropagation()` calls removed — no longer needed since there's no nesting to suppress
+- Thumbnail link given `tabIndex={-1} aria-hidden="true"` so keyboard users land on the title link (which has a proper `aria-label`) instead of a redundant duplicate tab stop
+
+**File:** `VideoCard.jsx`, `VideoCard.css` (frontend)
+
+**Lesson:** A JS-level workaround (`stopPropagation`) can mask a symptom of invalid HTML structure without fixing the structure itself. When React logs a DOM-validity warning, treat it as a structural defect to fix, not a warning to silence.
+
+---
+
+### 16. View count still incrementing by 2 — StrictMode double-invocation, and the "fix" attempt broke video loading entirely
+
+**Symptom:** Video views incremented by 2 per watch instead of 1.
+
+**Root cause:** React's `<StrictMode>` intentionally double-invokes effects in development (mount → cleanup → mount again) to help surface side-effect bugs. The Watch page's video-fetch effect had no guard against this, so `GET /videos/:videoId` (which atomically increments views server-side) fired twice per real page visit.
+
+**First attempted fix (rejected):** Removing `<StrictMode>` entirely from `main.jsx`. This would have silenced the symptom but disabled StrictMode's other dev-time safety checks across the whole app, not just this one effect — too blunt a fix for what it solved.
+
+**Second attempt — `fetchedForRef` guard, revealed a deeper bug:** A `useRef` keyed to `videoId` (rather than a plain boolean) was used to guard against duplicate fetch calls. This introduced a **new, more serious bug**: the guard's underlying `cancelled` flag was a per-closure `let` variable, but StrictMode's cleanup function closed over and set `cancelled = true` on the *first* (intentionally-discarded) effect run. Because the guard prevented a *second* fetch call from firing at all, the *legitimate* fetch's own `.then()`/`.finally()` handlers still checked that same poisoned `cancelled` flag — saw `true` — and silently discarded a fully successful response. Net effect: `isLoading` never got set to `false`, the loading skeleton stayed on screen permanently, and no `<video>` element ever mounted, even though the network request itself succeeded with correct data (confirmed via Network tab).
+
+**Actual fix:** Replaced the per-closure `let cancelled` with a `cancelRef` (`useRef`) shared across invocations, and explicitly reset `cancelRef.current = false` inside the guard's early-return path — undoing the stale cleanup signal before the legitimate fetch's promise resolves. This correctly distinguishes "StrictMode noise" from "a real unmount/navigation happened," so genuine stale-response protection (e.g. user navigates away mid-fetch) still works, while the false-positive discard on first load does not.
+
+**Files:** `Watch.jsx` (frontend)
+
+**Lesson:** Guarding against duplicate *calls* and guarding against *stale responses* are two different concerns that can silently interfere with each other if they share the same flag. A fix that "sounds right" in description should still be verified against actual DOM/network evidence — this one required inspecting the Elements panel (confirmed no `<video>` tag existed) before the real bug was found.
+
+---
+
+### 17. `isSubscribed` always `false` on the Channel page/Watch page, even when actually subscribed
+
+**Symptom:** After subscribing to a channel, navigating away and back showed the Subscribe button reverted to "Subscribe" instead of "Subscribed" — and clicking it again would incorrectly toggle the subscription off.
+
+**Investigation:** Added temporary `console.log` debug lines through the full frontend chain (API response handler → state update → component prop) and confirmed the frontend was correctly receiving, storing, and passing along whatever the backend sent — the backend itself was returning `isSubscribed: false` unconditionally.
+
+**Root cause:** When `GET /users/c/:username` was originally made public (Slice 3, bug #13), `verifyJWT` was simply removed with nothing put in its place — unlike the equivalent fix on the video route, which correctly used the new `verifyJWTOptional` middleware. With no auth middleware at all on this route, `req.user` was always `undefined`, for every request, logged in or not. The controller's `isSubscribed` computation (`{$in: [req.user?._id, "$subscribers.subscriber"]}`) could therefore never match, and always evaluated to `false` — for everyone, unconditionally.
+
+**Fix:**
+```js
+router.route("/c/:username").get(verifyJWTOptional, getUserChannelProfile)
+```
+Same middleware already built for the video route in bug #14 — applied here too.
+
+**File:** `user.routes.js`
+
+**Lesson:** This is the second time the exact same category of bug appeared from the exact same root cause (a route made public by deleting `verifyJWT` outright, instead of swapping it for `verifyJWTOptional`). Any route that needs to be "public but personalized," now and in the future, must use `verifyJWTOptional` — never just remove auth entirely and assume `req.user` will be handled gracefully downstream.
+
+---
+
+---
+
+## Slice 4: Comments + Likes
+
+### 18. `comment.routes.js` had the same blanket-auth issue, again
+
+**Symptom:** Caught during review, before it caused a live bug.
+
+**Root cause:** Same recurring pattern as bugs #2 and #13 — `router.use(verifyJWT)` applied globally, blocking public comment viewing. Comments on a video should be readable by logged-out visitors, same as the video itself; only posting/editing/deleting requires auth.
+
+**Fix:**
+```js
+router.route("/:videoId").get(verifyJWTOptional, getVideoComments).post(verifyJWT, addComment);
+router.route("/c/:commentId").delete(verifyJWT, deleteComment).patch(verifyJWT, updateComment);
+```
+Used `verifyJWTOptional` (not fully public) on the `GET` specifically, anticipating a need to know the viewer's identity for "is this my comment" edit/delete button visibility later.
+
+**File:** `comment.routes.js`
+
+**Note:** `like.routes.js` was reviewed and correctly left with a blanket `router.use(verifyJWT)` — unlike comments, there's no legitimate logged-out use case for toggling or viewing likes, so no change was needed there.
+
+---
+
+### 19. A confusing, traceless `500` — a syntax typo was masking a real, fixable error underneath
+
+**Symptom:** `POST /comments/:videoId` (`addComment`) consistently returned a generic `500 Internal Server Error`, but — highly unusually — **nothing printed in the backend terminal at all**, even across multiple full server restarts and after ruling out a zombie process on port 8000 (`netstat` showed only one listener).
+
+**Investigation:** Since the usual approach (check the terminal trace) produced nothing, added an unmissable raw `console.log("!!! addComment was called !!!", ...)` as the very first line of the function to establish whether the request was even reaching the controller at all.
+
+**Root cause, part 1:** A stray typo — `if (!content?.trim()) {p` — an extra `p` character sitting right after the opening brace. This is a genuine JavaScript syntax error, which broke module parsing in a way that didn't produce a normal, traceable stack trace the way a runtime error would.
+
+**Root cause, part 2 (revealed only after fixing the typo):** Once the syntax error was fixed and the debug log successfully appeared, the *real* underlying bug became visible: `comment.controller.js` imported `mongoose` but not `isValidObjectId` specifically —
+```js
+import mongoose from "mongoose"   // missing { isValidObjectId }
+```
+— so calling `isValidObjectId(videoId)` threw `ReferenceError: isValidObjectId is not defined`.
+
+**Fix:**
+```js
+import mongoose, {isValidObjectId} from "mongoose"
+```
+Matching the import pattern already used correctly in `video.controller.js` and `subscription.controller.js`.
+
+**File:** `comment.controller.js`
+
+**Lesson:** Not every bug leaves a helpful trace. A syntax error can break module loading in ways that produce confusing, silent failures instead of a clean crash — when a normally-reliable debugging method (checking the terminal trace) suddenly produces nothing, the next step is to add an unmistakable, impossible-to-miss log line to establish ground truth about whether code is executing at all, rather than continuing to guess at runtime causes for a problem that was actually happening at parse time.
+
+---
+
+---
+
+### 20. Sidebar overlapping page content, not collapsing correctly
+
+**Symptom:** On the new Liked Videos page (and confirmed also on Home), the sidebar overlapped/covered video cards instead of sitting beside them, and didn't respond to whatever normally toggles it — video cards were cut off underneath it.
+
+**Root cause:** Not fully diagnosed in detail (handled by Antigravity directly), but confirmed to be a pre-existing layout fragility that became visible once a new page (`LikedVideos`) was added without the same layout wrapper/structure as `Home`/`Watch`.
+
+**Fix:** Sidebar positioning/toggle logic corrected to behave consistently across Home, Watch, Channel, and Liked Videos pages.
+
+**File:** Sidebar component + layout wrappers (frontend)
+
+**Lesson:** A layout bug can hide in existing pages until a new page's structure exposes it — worth spot-checking shared layout components (header, sidebar) whenever a new top-level page is added, not just testing the new page in isolation.
+
+---
+
+### 21. Comment edit/delete options never appeared for the comment's own author
+
+**Symptom:** Logged in as a comment's author, no Edit/Delete UI appeared on that comment — only the like button showed, for every comment regardless of ownership.
+
+**Root cause:** An ownership-comparison bug in `CommentItem` (specific mismatch not detailed in the journal at the time — handled directly by Antigravity after being asked to show the current logic before fixing, per this project's now-standard practice of not accepting blind patches).
+
+**Fix:** Corrected the ownership check so Edit/Delete options render correctly when the logged-in user matches the comment's `owner` field.
+
+**File:** `CommentItem.jsx` (frontend)
+
+---
+
+### 22. Feature addition: video owners can delete (not edit) any comment on their own video
+
+**What:** Extended `deleteComment` so that in addition to a comment's author being able to delete their own comment, the *video's owner* can also delete any comment on their own video — standard moderation capability on real video platforms. Editing intentionally stays restricted to the comment's author only; only deletion was extended.
+
+**Backend change:**
+```js
+const video = await Video.findById(comment.video)
+const isCommentOwner = comment.owner.toString() === req.user._id.toString()
+const isVideoOwner = video?.owner?.toString() === req.user._id.toString()
+
+if (!isCommentOwner && !isVideoOwner) {
+    throw new ApiError(403, "You are not authorized to delete this comment")
+}
+```
+Required importing `Video` into `comment.controller.js`.
+
+**Frontend change:** `CommentItem`'s delete-option visibility condition extended to show if the current user is either the comment's author OR the video's owner (video owner id passed down from the Watch page, where it's already available from the video fetch).
+
+**Files:** `comment.controller.js` (backend), `CommentItem.jsx` / `CommentSection.jsx` (frontend)
+
+**Lesson:** This was a deliberate feature addition, not a bug fix — a good example of recognizing a real platform pattern (two-tier comment permissions: author edit/delete vs. owner moderate-delete) and implementing it as a small, clean extension of existing authorization logic rather than a parallel system.
+
+---
+
+### 23. Delete confirmation used the browser's native `window.confirm()` — looked unprofessional, out of place
+
+**Symptom:** Clicking Delete on a comment triggered a raw browser alert dialog (unstyled, showing the literal `localhost:5173 says...` browser chrome) instead of an in-app modal matching the rest of the design.
+
+**Root cause:** The initial implementation used `window.confirm()` directly rather than a custom UI component — functional, but visually inconsistent with the app's actual design system.
+
+**Fix:** Built a reusable `ConfirmDialog` component (accepting `title`, `message`, `confirmText`, `cancelText`, `onConfirm`, `onCancel` props) styled to match the app's existing dark theme and button conventions, dismissible via backdrop click or Cancel button. Replaced the `window.confirm()` call in the comment-delete flow with this component.
+
+**File:** New `ConfirmDialog` component (frontend), comment delete flow updated to use it
+
+**Lesson:** Built generically from the start (not hardcoded to comments) so it can be reused for future destructive actions (deleting videos, unsubscribing, etc.) without rebuilding the same pattern again.
+
+---
+
+---
+
+## Slice 5: Playlists, Tweets (Community Posts), Dashboard
+
+### 24. `playlist.routes.js` and `tweet.routes.js` had the same recurring blanket-auth issue
+
+**Symptom:** Caught during review, before causing a live bug — the fourth occurrence of this exact pattern (see bugs #2, #13, #18).
+
+**Root cause:** Both files had `router.use(verifyJWT)` applied globally, blocking public viewing of playlists and tweets — both of which should be publicly browsable (like videos and comments), with only create/update/delete/add-video/remove-video requiring auth.
+
+**Fix:** Scoped `verifyJWTOptional` to read routes (`getPlaylistById`, `getUserPlaylists`, `getUserTweets`) and `verifyJWT` to all mutating routes, removing the blanket middleware in both files.
+
+**Files:** `playlist.routes.js`, `tweet.routes.js`
+
+**Lesson:** This pattern has now appeared four times across the project (video, channel profile, comments, and now playlists/tweets). Worth explicitly checking for a blanket `router.use(verifyJWT)` as the very first thing when reviewing any new scaffolded routes file — it's clearly the default habit carried over from the original course template, and needs correcting almost every time a new resource has both public read and private write operations.
+
+---
+
+### 25. Playlist public/private visibility — feature added deliberately, with a bug caught during setup
+
+**What:** Added an `isPublic` field (default `true`) to `playlist.model.js`, plus visibility logic in `getPlaylistById` (private playlists return `404`, not `403`, to non-owners — avoids confirming the resource's existence to unauthorized viewers) and `getUserPlaylists` (filters to public-only unless the requester is viewing their own list).
+
+**Setup bug caught during testing:** `POST /playlists` returned a raw HTML "Cannot POST" 404 instead of the app's JSON error shape. Root cause: `app.js` had mounted the playlist router at `/api/v1/playlist` (singular), inconsistent with every other resource route (`/videos`, `/comments`, `/likes`, `/subscriptions` — all plural). The request being tested was hitting `/api/v1/playlists` (plural), which had no matching route at all.
+
+**Fix:** Updated `app.js` to `app.use("/api/v1/playlists", playlistRouter)`, matching the pluralized convention used everywhere else.
+
+**Files:** `playlist.model.js`, `playlist.controller.js` (`getPlaylistById`, `getUserPlaylists`, `updatePlaylist`), `app.js`
+
+**Lesson:** A raw HTML error response (rather than the app's JSON error shape) is a strong signal the request never reached the app's own routing/middleware at all — worth checking the route mount path in `app.js` first in that situation, rather than assuming the bug is inside the controller.
+
+---
+
+### 26. `getUserTweets` and `getChannelVideos` — decided during build to include data beyond the minimum scaffold
+
+**What (getUserTweets):** Added an explicit existence check for the target user (`User.exists({ _id: userId })`, returning `404` if not found) for consistency with `getUserChannelProfile`'s behavior — previously, a nonexistent user ID would have silently returned an empty tweets array instead of a clear 404.
+
+**What (getChannelVideos):** Initially written as a plain `Video.find({ owner: channelId })`, which already included each video's real `views` field but had no `likesCount` (not a real schema field — only ever computed via aggregation elsewhere in the project). Upgraded to an aggregation pipeline joining in `likesCount` per video, since a creator's own video-management dashboard is exactly the place per-video performance data (views + likes) is expected.
+
+**Files:** `tweet.controller.js`, `dashboard.controller.js`
+
+---
+
+---
+
+### 27. Channel page briefly flashed a full-page "Something went wrong" error, despite content loading correctly
+
+**Symptom:** Visiting a Channel page (after the new Playlists/Community tabs were added) briefly showed a full-page "Something went wrong — Failed to load channel" error state, even though the channel's cover, avatar, name, and stats rendered correctly immediately after/alongside it.
+
+**Root cause:** A race condition — one of the newer per-tab fetches (playlists or tweets data) failing or erroring transiently was incorrectly triggering the whole page's error boundary/state, instead of being scoped to just that tab's section.
+
+**Fix:** Scoped error handling so a failure in the Playlists or Community tab's data fetch shows its own local error/empty state within that tab only, without affecting the main channel profile header's render state.
+
+**File:** `Channel.jsx` (frontend)
+
+---
+
+### 28. Channel page layout — full-bleed cover image, inconsistent centering with sidebar open/closed
+
+**What:** Design polish pass (not a bug) — the Channel page's cover image stretched edge-to-edge across the full browser width, and content shifted depending on sidebar open/collapsed state, unlike YouTube's contained, consistently-centered layout.
+
+**Fix:** Capped the content area (cover image, profile info, tabs, tab content) at a max-width, centered consistently regardless of sidebar state.
+
+**File:** `Channel.css`
+
+---
+
+### 29. Avatar/text alignment and sizing on Channel page didn't match reference
+
+**What:** Design polish — avatar was too small relative to YouTube's proportions, and the text block (name, stats) beside it was vertically offset rather than centered relative to the avatar as a group.
+
+**Fix:** Increased avatar size within its existing layout bounds; fixed `align-items: center` on the containing flex layout so avatar and text block align as a unit.
+
+**File:** `Channel.css`
+
+---
+
+### 30. Feature: Playlists link added to main Sidebar navigation
+
+**What:** Added a "Playlists" item to the Sidebar (alongside Home, Trending, Subscriptions, etc.), linking to the current user's own Channel page with the Playlists tab pre-selected — reusing the existing Channel page/tab infrastructure rather than building a separate page. Auth-gated, same pattern as History/Liked Videos.
+
+**File:** `Sidebar.jsx`
+
+---
+
+### 31. PlaylistCard cover image and video count logic was broken — appeared to require ≥4 videos to work at all
+
+**Symptom:** A playlist's DETAIL page correctly showed cover thumbnail and accurate video count in all cases. But the same playlist's CARD on the Channel page's Playlists tab showed no cover and "0 videos" for playlists with 1-3 videos — and even for a playlist with 4 videos, the card showed a cover but an incorrect count ("1 video" instead of "4 videos").
+
+**Root cause:** Not fully detailed in available context (traced and fixed directly by Antigravity after being explicitly instructed not to patch around a "4 videos" threshold and to identify the actual broken condition) — behavior strongly suggested `PlaylistCard` was reading the wrong data source, wrong field, or an incorrect index rather than generically using `videos[0]?.thumbnail` and `videos.length`.
+
+**Fix:** Corrected to generically read the actual `videos` array length and first element's thumbnail regardless of count, verified against playlists with 0, 1, and 4 videos.
+
+**File:** `PlaylistCard.jsx`
+
+**Lesson:** A bug that "happens to work" at one specific data point (here, exactly 4 videos, matching a reference screenshot shared earlier in the conversation) is a strong signal the underlying logic isn't generic — it's very likely anchored to that specific example rather than the actual field/length being checked correctly. Explicitly instructing against threshold-based patches (rather than just reporting the symptom) was necessary to get the real fix.
+
+---
+
+### 32. Playlist video list thumbnails were oversized relative to YouTube's reference proportions
+
+**What:** Design polish — the video thumbnails in a Playlist detail page's video list were too wide/short compared to YouTube's more compact, standard-aspect-ratio thumbnails in the same context.
+
+**Fix:** Adjusted thumbnail width/height/aspect-ratio in the playlist video list specifically, scoped only to that component, no other changes.
+
+**File:** `Playlist.css`
+
+---
+
+### 33. Watch page Save button crashed the entire page with a black screen — `ReferenceError: user is not defined`
+
+**Symptom:** Clicking the Save button on the Watch page produced a black screen that didn't recover until a full page refresh.
+
+**Investigation:** Console check (following this project's now-standard debugging process) revealed an actual uncaught error, not a stuck-render/race-condition this time:
+```
+Uncaught ReferenceError: user is not defined
+    at Watch (Watch.jsx:546:19)
+```
+React's own logging confirmed this crashed the whole `<Watch>` component during render — explaining why the screen went fully black and didn't recover without a remount (a component that throws during render leaves React with nothing to display).
+
+**Root cause:** A variable naming mismatch at Watch.jsx line 546 — code referenced a variable called `user` that didn't exist in that scope, almost certainly meant to reference `currentUser` (or whatever the actual `useAuth()` destructuring uses) instead.
+
+**Fix:** Corrected the variable reference to match the actual variable name in scope.
+
+**File:** `Watch.jsx`
+
+**Lesson:** This was one of the fastest, most confident fixes in the whole project specifically because the console gave an exact file, line number, and error type — a stark contrast to the earlier stuck-render bugs (Slice 3's StrictMode/cancelRef saga, the syntax-error-masking-a-missing-import in comments) which required much deeper investigation because the browser gave no equivalent direct signal. Checking the console first, before forming any hypothesis, continues to be the highest-leverage debugging step available.
+
+---
+
+### 34. Feature: custom playlist cover ("Set as playlist thumbnail")
+
+**What:** Added the ability for a playlist owner to explicitly choose which video's thumbnail represents the playlist, overriding the default "always use the first video" behavior.
+
+**Backend changes:**
+- Added `coverVideo` field (`ObjectId` ref to `Video`, defaults `null`) to `playlist.model.js` — `null` preserves existing default-cover behavior for all existing playlists
+- New `setPlaylistCover` controller function (`PATCH /playlists/cover/:videoId/:playlistId`, owner-only, validates the video is actually part of the playlist before allowing it as a cover)
+- `getPlaylistById` and `getUserPlaylists` updated to `.populate("coverVideo", "thumbnail")`, returning either `null` or a partial `{ _id, thumbnail }` object
+
+**Frontend changes:** Cover-display logic (`PlaylistCard`, Playlist detail page sidebar) updated to prioritize `playlist.coverVideo?.thumbnail`, falling back to `playlist.videos[0]?.thumbnail`, falling back to a placeholder. New "Set as playlist thumbnail" option added to a three-dot menu replacing the old single "✕ remove" icon on each video row (menu also includes "Add to playlist" and "Remove from [Playlist Name]").
+
+**Bug caught during this build:** Clicking "Set as playlist thumbnail" corrupted the entire video list display (titles showing "Unknown", views "0", blank thumbnails) plus a React "missing key prop" console warning. Root cause: the `PATCH /playlists/cover/...` response's `coverVideo` field is a **partial** object (`{ _id, thumbnail }` only, populated via a scoped `.populate()`), while the same response's `videos` array contains **full** video documents. The click handler's state-update logic was incorrectly using the response to replace/re-map the component's `videos` list state (or conflating `coverVideo` with an entry in `videos`), substituting partial data where full video objects were expected. Fixed by scoping the click handler's state update to only ever touch the cover-image reference, never the `videos` array itself.
+
+**Files:** `playlist.model.js`, `playlist.controller.js`, `playlist.routes.js` (backend); `PlaylistCard.jsx`, `Playlist.jsx` (frontend)
+
+**Lesson:** When an API response contains a full object and a deliberately-partial object side by side (as here — full `videos[]` vs. partial `coverVideo`), it's easy for frontend state logic to conflate the two if the update code isn't precise about which field maps to which piece of local state. Worth being explicit in prompts/specs about "this field is partial, only use it for X" when handing off an API shape that mixes full and partial representations of the same underlying entity.
+
+---
+
+## General lessons from this slice
+
+1. **The backend completing successfully doesn't mean the frontend received anything.** CORS failures, port mismatches, and interceptor bugs all happen *after* the server has already done its job — check both sides before assuming the backend is broken.
+2. **`select: false` and other schema-level changes ripple outward.** Any change to how a field is returned by default requires auditing every existing query that touches it.
+3. **Debug logging beats guessing.** The `refreshToken` crash looked like 3-4 different plausible bugs before temporary `console.log`s on `req.cookies`/`req.headers.cookie` gave a definitive answer.
+4. **Silent-refresh interceptors need an escape hatch.** Any "retry on 401 via refresh" pattern must explicitly exclude the refresh call itself from triggering another refresh attempt — otherwise a logged-out visitor can create a self-referential hang.
+5. **Ports drift silently.** Vite will happily jump to the next available port without loudly failing — always check the actual terminal output rather than assuming the default port is in use.
+
+---
+
+*Last updated: Slice 5 (Playlists with public/private visibility and custom covers, Tweets/Community posts, Creator Dashboard) fully complete and verified, backend and frontend. All planned feature slices (1-5) now done. Next: Slice 6 — production hardening (rate limiting, input validation, orphaned file cleanup, deployment) before/during deploy.*

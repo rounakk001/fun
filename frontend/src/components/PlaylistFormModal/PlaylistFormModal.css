@@ -1,0 +1,106 @@
+/* ── Backdrop ─────────────────────────────────────────────────── */
+.playlist-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background-color: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  animation: backdrop-fade-in 150ms ease both;
+}
+
+/* ── Modal Card ───────────────────────────────────────────────── */
+.playlist-modal {
+  background-color: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  animation: dialog-pop-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.playlist-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.playlist-modal__title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+}
+
+.playlist-modal__close {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.playlist-modal__close:hover {
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.playlist-modal__form {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* ── Custom Toggle Checkbox ───────────────────────────────────── */
+.playlist-modal__toggle {
+  margin-top: var(--space-2);
+}
+
+.playlist-modal__toggle-label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  cursor: pointer;
+}
+
+.playlist-modal__checkbox {
+  margin-top: 4px;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-accent);
+}
+
+.playlist-modal__toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.playlist-modal__toggle-text strong {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.playlist-modal__toggle-text span {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+/* ── Actions ──────────────────────────────────────────────────── */
+.playlist-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}

@@ -1,0 +1,61 @@
+/* ── Root container ───────────────────────────────────────────── */
+
+.home-root {
+  min-height: 100vh;
+  background-color: var(--color-bg-primary);
+}
+
+/* ── Layout below the header ──────────────────────────────────── */
+
+.home-layout {
+  display: flex;
+  padding-top: var(--header-height);
+  min-height: 100vh;
+}
+
+/* ── Content area ─────────────────────────────────────────────── */
+
+.content-area {
+  margin-left: 0;
+  flex: 1;
+  padding: var(--space-8);
+  /* Minimum height so grid fills the viewport */
+  min-height: calc(100vh - var(--header-height));
+  overflow-y: auto;
+  transition: margin-left var(--transition-slow);
+}
+
+.home-layout.sidebar-open .content-area {
+  margin-left: var(--sidebar-width);
+}
+
+/* On mobile, sidebar is overlaid — content takes full width */
+@media (max-width: 768px) {
+  .content-area, .home-layout.sidebar-open .content-area {
+    margin-left: 0;
+    padding: var(--space-5) var(--space-4);
+  }
+}
+
+/* ── Error state ──────────────────────────────────────────────── */
+
+.home-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  min-height: 320px;
+  text-align: center;
+}
+
+.home-error__icon {
+  font-size: 2.5rem;
+}
+
+.home-error__text {
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+  max-width: 360px;
+  line-height: 1.6;
+}

@@ -1,0 +1,51 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+
+            echo "Navigating to project..."
+            cd ${{ secrets.PROJECT_PATH }}
+
+            echo "Pulling latest changes..."
+            git pull origin main
+
+            echo "Installing backend dependencies..."
+            cd backend
+            npm ci
+
+            echo "Installing frontend dependencies..."
+            cd ../frontend
+            npm ci
+
+            echo "Building frontend..."
+            npm run build
+
+            echo "Deploying frontend..."
+            rm -rf ${{ secrets.FRONTEND_BUILD_PATH }}/*
+            cp -r dist/* ${{ secrets.FRONTEND_BUILD_PATH }}/
+
+            echo "Restarting backend..."
+            cd ../backend
+            pm2 restart yeonix-backend
+
+            echo "Deployment completed successfully."

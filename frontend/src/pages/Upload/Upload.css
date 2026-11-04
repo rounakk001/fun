@@ -1,0 +1,349 @@
+/* ── Root & layout — mirrors Home/Watch shell ─────────────────── */
+
+.upload-root {
+  min-height: 100vh;
+  background-color: var(--color-bg-primary);
+}
+
+.upload-layout {
+  display: flex;
+  padding-top: var(--header-height);
+  min-height: 100vh;
+}
+
+.upload-main {
+  margin-left: var(--sidebar-width);
+  flex: 1;
+  padding: var(--space-8);
+  min-height: calc(100vh - var(--header-height));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .upload-main {
+    margin-left: 0;
+    padding: var(--space-5) var(--space-4);
+  }
+}
+
+/* ── Centered form container ──────────────────────────────────── */
+
+.upload-container {
+  width: 100%;
+  max-width: 760px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+/* ── Page heading ─────────────────────────────────────────────── */
+
+.upload-heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.upload-heading__title {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  line-height: 1.2;
+  margin: 0;
+}
+
+.upload-heading__sub {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+/* ── Form ─────────────────────────────────────────────────────── */
+
+.upload-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-8);
+}
+
+/* Required star */
+.upload-required {
+  color: var(--color-accent);
+  margin-left: 2px;
+}
+
+/* Textarea */
+.upload-textarea {
+  resize: vertical;
+  min-height: 100px;
+  line-height: 1.6;
+}
+
+/* ── Error banner (server error) ──────────────────────────────── */
+
+.upload-error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-error-bg);
+  border: 1px solid rgba(255, 77, 77, 0.25);
+  border-radius: var(--radius-md);
+  color: var(--color-error);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  animation: banner-in 200ms ease both;
+}
+
+@keyframes banner-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── File pickers row ─────────────────────────────────────────── */
+
+.upload-files-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+}
+
+@media (max-width: 560px) {
+  .upload-files-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.upload-file-group {
+  gap: var(--space-2);
+}
+
+/* ── Dropzone button ──────────────────────────────────────────── */
+
+.upload-dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-md);
+  border: 2px dashed var(--color-border);
+  background: var(--color-bg-input);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: border-color var(--transition-base), background-color var(--transition-base),
+    color var(--transition-fast), transform var(--transition-fast);
+  overflow: hidden;
+  position: relative;
+}
+
+.upload-dropzone:hover:not(:disabled) {
+  border-color: var(--color-border-focus);
+  color: var(--color-text-secondary);
+  background: var(--color-bg-hover);
+  transform: translateY(-1px);
+}
+
+.upload-dropzone:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.upload-dropzone--error {
+  border-color: var(--color-error);
+  background: var(--color-error-bg);
+}
+
+.upload-dropzone--filled {
+  border-style: solid;
+  border-color: var(--color-border-focus);
+}
+
+/* Thumbnail variant — square-ish */
+.upload-dropzone--thumb {
+  aspect-ratio: 16 / 9;
+}
+
+/* Prompt content (when empty) */
+.upload-dropzone__prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+
+.upload-dropzone__label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+}
+
+.upload-dropzone__hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* File info (when a video is selected) */
+.upload-dropzone__file-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-4);
+  width: 100%;
+  pointer-events: none;
+}
+
+.upload-dropzone__file-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.upload-dropzone__file-name {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.upload-dropzone__file-size {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.upload-dropzone__change {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+/* ── Thumbnail preview ────────────────────────────────────────── */
+
+.upload-thumb-preview-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.upload-thumb-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.upload-thumb-change {
+  position: absolute;
+  bottom: var(--space-2);
+  right: var(--space-2);
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+}
+
+/* ── Progress block ───────────────────────────────────────────── */
+
+.upload-progress-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  animation: banner-in 200ms ease both;
+}
+
+.upload-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.upload-progress-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+}
+
+.upload-progress-pct {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-accent);
+  min-width: 40px;
+  text-align: right;
+}
+
+.upload-progress-track {
+  width: 100%;
+  height: 6px;
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.upload-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-accent), #ff8844);
+  border-radius: var(--radius-full);
+  transition: width 300ms ease;
+}
+
+/* Indeterminate pulse when server is processing */
+@keyframes progress-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.55; }
+}
+
+.upload-progress-fill--pulse {
+  animation: progress-pulse 1.2s ease-in-out infinite;
+  width: 100% !important;
+}
+
+.upload-progress-note {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+/* ── Actions row ──────────────────────────────────────────────── */
+
+.upload-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+}
+
+.upload-submit-btn {
+  padding: var(--space-3) var(--space-8);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  gap: var(--space-2);
+}
+
+/* ── Spinner animation ────────────────────────────────────────── */
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.upload-spinner {
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}

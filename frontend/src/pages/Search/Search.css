@@ -1,0 +1,86 @@
+/* ── Root & layout — mirrors Home.css ────────────────────────── */
+
+.search-root {
+  min-height: 100vh;
+  background-color: var(--color-bg-primary);
+}
+
+.search-layout {
+  display: flex;
+  padding-top: var(--header-height);
+  min-height: 100vh;
+}
+
+/* Inherits .content-area from Home.css via global — we add specifics: */
+.search-content {
+  margin-left: var(--sidebar-width);
+  flex: 1;
+  padding: var(--space-8);
+  min-height: calc(100vh - var(--header-height));
+}
+
+@media (max-width: 768px) {
+  .search-content {
+    margin-left: 0;
+    padding: var(--space-5) var(--space-4);
+  }
+}
+
+/* ── Heading ──────────────────────────────────────────────────── */
+
+.search-heading {
+  margin-bottom: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.search-heading__title {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  line-height: 1.3;
+}
+
+.search-heading__query {
+  color: var(--color-accent);
+}
+
+.search-heading__count {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+/* ── Error ────────────────────────────────────────────────────── */
+
+.search-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-base);
+  padding: var(--space-6);
+}
+
+/* ── Empty prompt (no query typed yet) ───────────────────────── */
+
+.search-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  min-height: 320px;
+  text-align: center;
+}
+
+.search-empty__icon {
+  font-size: 3rem;
+}
+
+.search-empty__text {
+  font-size: var(--font-size-base);
+  color: var(--color-text-muted);
+  max-width: 360px;
+  line-height: 1.6;
+}

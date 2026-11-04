@@ -1,0 +1,218 @@
+/* ── Auth page shared layout ─────────────────────────────────── */
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  position: relative;
+  overflow: hidden;
+  background-color: var(--color-bg-primary);
+}
+
+/* Decorative background glows */
+.auth-glow {
+  position: absolute;
+  width: 480px;
+  height: 480px;
+  border-radius: var(--radius-full);
+  filter: blur(120px);
+  pointer-events: none;
+  opacity: 0.12;
+}
+
+.auth-glow--left {
+  background: var(--color-accent);
+  top: -120px;
+  left: -160px;
+}
+
+.auth-glow--right {
+  background: #4466ff;
+  bottom: -160px;
+  right: -120px;
+}
+
+/* ── Card ─────────────────────────────────────────────────────── */
+
+.auth-card {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  background-color: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-10) var(--space-8);
+  box-shadow: var(--shadow-lg);
+  animation: auth-card-in 400ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes auth-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ── Logo ─────────────────────────────────────────────────────── */
+
+.auth-logo {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.5px;
+  margin-bottom: var(--space-6);
+}
+
+.auth-logo__mark {
+  color: var(--color-accent);
+}
+
+.auth-logo__word {
+  color: var(--color-text-primary);
+}
+
+/* ── Headings ─────────────────────────────────────────────────── */
+
+.auth-title {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin-bottom: var(--space-2);
+  line-height: 1.2;
+}
+
+.auth-subtitle {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-8);
+}
+
+/* ── Form ─────────────────────────────────────────────────────── */
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* Backend / form-level error banner */
+.auth-form-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--color-error-bg);
+  border: 1px solid rgba(255, 77, 77, 0.25);
+  border-radius: var(--radius-md);
+  color: var(--color-error);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+}
+
+.auth-form-error svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* ── Submit button ────────────────────────────────────────────── */
+
+.auth-submit-btn {
+  width: 100%;
+  padding: var(--space-4) var(--space-6);
+  font-size: var(--font-size-base);
+  margin-top: var(--space-2);
+  border-radius: var(--radius-md);
+}
+
+/* ── File upload inputs ───────────────────────────────────────── */
+
+.file-upload-wrapper {
+  position: relative;
+}
+
+.file-upload-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--color-bg-input);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color var(--transition-base), background-color var(--transition-base);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  min-height: 48px;
+}
+
+.file-upload-label:hover {
+  border-color: var(--color-border-focus);
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.file-upload-label.has-file {
+  border-style: solid;
+  border-color: var(--color-accent);
+  color: var(--color-text-primary);
+}
+
+.file-upload-label.has-error {
+  border-color: var(--color-error);
+}
+
+.file-upload-icon {
+  flex-shrink: 0;
+  color: var(--color-accent);
+}
+
+.file-upload-preview {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  object-fit: cover;
+  border: 1px solid var(--color-border);
+}
+
+.file-upload-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Redirect link ────────────────────────────────────────────── */
+
+.auth-redirect {
+  margin-top: var(--space-6);
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.auth-redirect__link {
+  color: var(--color-accent);
+  font-weight: var(--font-weight-medium);
+  transition: color var(--transition-fast);
+}
+
+.auth-redirect__link:hover {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+}
+
+/* ── Responsive ───────────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .auth-card {
+    padding: var(--space-8) var(--space-6);
+  }
+}

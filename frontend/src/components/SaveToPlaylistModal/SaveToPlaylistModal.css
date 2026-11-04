@@ -1,0 +1,184 @@
+.save-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background-color: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  animation: backdrop-fade-in 150ms ease both;
+}
+
+.save-modal {
+  background-color: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  animation: dialog-pop-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.save-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.save-modal__title {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+}
+
+.save-modal__close {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.save-modal__close:hover {
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.save-modal__body {
+  padding: var(--space-2) 0;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.save-modal__loading,
+.save-modal__empty {
+  padding: var(--space-5);
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.save-modal__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.save-modal__item {
+  display: flex;
+}
+
+.save-modal__label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  width: 100%;
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.save-modal__label:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.save-modal__label--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.save-modal__checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-accent);
+}
+
+.save-modal__name {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.save-modal__badge {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+/* ── New Playlist button ──────────────────────────────────── */
+
+.save-modal__new-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3) var(--space-5);
+  font-size: var(--font-size-sm);
+  color: var(--color-accent);
+  font-weight: var(--font-weight-medium);
+  text-align: left;
+  transition: background-color var(--transition-fast);
+}
+
+.save-modal__new-btn:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.save-modal__new-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+/* ── Inline create form ───────────────────────────────────── */
+
+.save-modal__create-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5) var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.save-modal__input {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  transition: border-color var(--transition-fast);
+}
+
+.save-modal__input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.save-modal__privacy-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.save-modal__error {
+  font-size: var(--font-size-xs);
+  color: var(--color-error);
+}
+
+.save-modal__create-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+

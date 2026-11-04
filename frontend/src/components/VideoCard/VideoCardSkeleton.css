@@ -1,0 +1,77 @@
+/* ── Shimmer animation ────────────────────────────────────────── */
+
+@keyframes shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+
+.skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-card) 25%,
+    var(--color-bg-hover) 50%,
+    var(--color-bg-card) 75%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+/* ── Skeleton card shell ──────────────────────────────────────── */
+
+.skeleton-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Thumbnail */
+.skeleton--thumb {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-md);
+}
+
+/* Meta row */
+.skeleton-card__meta {
+  display: flex;
+  gap: var(--space-3);
+  padding: 0 var(--space-1);
+}
+
+/* Avatar */
+.skeleton--avatar {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+}
+
+/* Info lines */
+.skeleton-card__info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1;
+  padding-top: 2px;
+}
+
+.skeleton--title {
+  height: 14px;
+  width: 90%;
+  border-radius: var(--radius-sm);
+}
+
+.skeleton--title-short {
+  width: 60%;
+}
+
+.skeleton--text {
+  height: 12px;
+  width: 45%;
+  border-radius: var(--radius-sm);
+}

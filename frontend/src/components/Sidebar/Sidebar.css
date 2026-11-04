@@ -1,0 +1,291 @@
+/* ── Sidebar shell ────────────────────────────────────────────── */
+
+.sidebar {
+  position: fixed;
+  top: var(--header-height);
+  left: 0;
+  bottom: 0;
+  width: var(--sidebar-width);
+  background-color: var(--color-bg-secondary);
+  border-right: 1px solid var(--color-border);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--space-4) var(--space-3);
+  z-index: 90;
+  /* Hidden by default, shown by .sidebar--open */
+  transform: translateX(-100%);
+  transition: transform var(--transition-slow);
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    /* On mobile the sidebar slides in over the content */
+    box-shadow: var(--shadow-lg);
+  }
+}
+
+.sidebar--open {
+  transform: translateX(0);
+}
+
+/* ── Backdrop (mobile only) ───────────────────────────────────── */
+
+.sidebar-backdrop {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    top: var(--header-height);
+    background-color: rgba(0, 0, 0, 0.6);
+    z-index: 80;
+    animation: backdrop-in 200ms ease both;
+  }
+}
+
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Nav list ─────────────────────────────────────────────────── */
+
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* ── Nav items (shared) ───────────────────────────────────────── */
+
+.sidebar__nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--transition-fast),
+              color var(--transition-fast);
+  text-decoration: none;
+  /* Prevents text from wrapping */
+  white-space: nowrap;
+}
+
+.sidebar__nav-item svg {
+  flex-shrink: 0;
+}
+
+/* Enabled + hover */
+a.sidebar__nav-item:hover {
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+/* Active (current page) */
+.sidebar__nav-item--active {
+  background-color: var(--color-accent-soft);
+  color: var(--color-accent) !important;
+}
+
+.sidebar__nav-item--active svg {
+  stroke: var(--color-accent);
+}
+
+/* Disabled / coming-soon */
+.sidebar__nav-item--disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── Scrollbar inside sidebar ─────────────────────────────────── */
+
+.sidebar::-webkit-scrollbar {
+  width: 4px;
+}
+
+/* ── Subscriptions section ────────────────────────────────────── */
+
+.sidebar__subs-section {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header row: icon + label (NavLink) + chevron (Link) */
+.sidebar__subs-header {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+/* The icon + "Subscriptions" text portion — NavLink */
+.sidebar__subs-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1;
+  padding: var(--space-3) var(--space-4);
+  padding-right: var(--space-2);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.sidebar__subs-label:hover {
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.sidebar__subs-label--active {
+  background-color: var(--color-accent-soft);
+  color: var(--color-accent) !important;
+}
+
+.sidebar__subs-label--active svg {
+  stroke: var(--color-accent);
+}
+
+/* ">" chevron — small Link button to the right of the label */
+.sidebar__subs-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.sidebar__subs-chevron:hover {
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+/* ── Nested channel list ──────────────────────────────────────── */
+
+.sidebar__subs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+/* Each channel row */
+.sidebar__sub-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.sidebar__sub-item:hover {
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+/* Avatar wrapper — holds the img + dot */
+.sidebar__sub-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+  display: inline-flex;
+}
+
+/* Avatar image */
+.sidebar__sub-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+}
+
+/* Fallback initial letter */
+.sidebar__sub-avatar--fallback {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+/* Red unseen-content dot */
+.sidebar__sub-dot {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background-color: #e53935;
+  border: 1.5px solid var(--color-bg-secondary);
+  box-shadow: 0 0 5px rgba(229, 57, 53, 0.6);
+  pointer-events: none;
+}
+
+/* Channel name — truncate if too long */
+.sidebar__sub-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 110px;
+}
+
+/* ── Show more / Show less toggle ─────────────────────────────── */
+
+.sidebar__subs-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.sidebar__subs-toggle:hover {
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.sidebar__subs-toggle svg {
+  flex-shrink: 0;
+}
+
