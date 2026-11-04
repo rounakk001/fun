@@ -284,7 +284,8 @@ function Watch() {
         getVideos({ page: 1, limit: 8, sortBy: 'createdAt', sortType: 'desc' })
           .then((res) => {
             if (cancelled) return;
-            const fallbackFiltered = res.data.data.docs.filter((v) => v._id !== videoId);
+            const docs = res?.data?.data?.docs || [];
+            const fallbackFiltered = docs.filter((v) => v._id !== videoId);
             setRelated(fallbackFiltered);
           })
           .catch(() => {

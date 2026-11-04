@@ -1,5 +1,5 @@
 # ==============================================================================
-# Yeonix — 1-Click Error-Free Live Deploy Script
+# Yeonix - 1-Click Error-Free Live Deploy Script
 # Usage: .\deploy.ps1 "Your commit message here"
 # ==============================================================================
 
@@ -13,19 +13,19 @@ Write-Host "`n========================================================" -Foregro
 Write-Host "   YEONIX LIVE AUTO-DEPLOYMENT PIPELINE" -ForegroundColor Magenta
 Write-Host "========================================================`n" -ForegroundColor Magenta
 
-# Step 1: Pre-deployment checks (Test to ensure no errors reach production)
-Write-Host "🧪 [1/4] Verifying code integrity (Pre-Deploy Tests)..." -ForegroundColor Cyan
+# Step 1: Pre-deployment checks
+Write-Host "[1/4] Verifying code integrity (Pre-Deploy Tests)..." -ForegroundColor Cyan
 try {
     npm test --prefix backend -- --passWithNoTests
     Write-Host "   All backend tests passed cleanly!" -ForegroundColor Green
 } catch {
-    Write-Host "`n❌ ERROR: Tests failed! Deployment ABORTED to protect live website." -ForegroundColor Red
-    Write-Host "   Fix the test error locally before deploying.`n" -ForegroundColor Red
+    Write-Host "`nERROR: Tests failed! Deployment ABORTED to protect live website." -ForegroundColor Red
+    Write-Host "Fix the test error locally before deploying.`n" -ForegroundColor Red
     exit 1
 }
 
 # Step 2: Push changes to GitHub
-Write-Host "`n📦 [2/4] Committing & pushing to GitHub..." -ForegroundColor Cyan
+Write-Host "`n[2/4] Committing and pushing to GitHub..." -ForegroundColor Cyan
 git add .
 $status = git status --porcelain
 if ($status) {
@@ -37,7 +37,7 @@ git push origin main
 Write-Host "   Pushed to origin/main successfully!" -ForegroundColor Green
 
 # Step 3: Trigger remote server update via SSH
-Write-Host "`n☁️  [3/4] Updating live EC2 server (yeonix.duckdns.org)..." -ForegroundColor Cyan
+Write-Host "`n[3/4] Updating live EC2 server (yeonix.duckdns.org)..." -ForegroundColor Cyan
 
 $remoteScript = @'
 set -e
@@ -69,11 +69,11 @@ echo "--> [EC2] All services updated successfully!"
 try {
     ssh -o StrictHostKeyChecking=no -i C:\Users\rouna\yeonix-key.pem ubuntu@yeonix.duckdns.org "$remoteScript"
 } catch {
-    Write-Host "`n❌ ERROR: Failed to connect to EC2 via SSH. Please check your network connection." -ForegroundColor Red
+    Write-Host "`nERROR: Failed to connect to EC2 via SSH. Please check your network connection." -ForegroundColor Red
     exit 1
 }
 
 Write-Host "`n========================================================" -ForegroundColor Green
-Write-Host "🎉 DEPLOYMENT COMPLETE! LIVE SITE UPDATED ERROR-FREE" -ForegroundColor Green
-Write-Host "🌐 Visit live website: https://yeonix.duckdns.org" -ForegroundColor Yellow
+Write-Host "DEPLOYMENT COMPLETE! LIVE SITE UPDATED ERROR-FREE" -ForegroundColor Green
+Write-Host "Visit live website: https://yeonix.duckdns.org" -ForegroundColor Yellow
 Write-Host "========================================================`n" -ForegroundColor Green

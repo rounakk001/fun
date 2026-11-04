@@ -12,7 +12,7 @@ import axios from 'axios';
  */
 
 const axiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL,
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
   withCredentials: true,
   // Note: do NOT set a global Content-Type header here.
   // Axios sets it automatically per-request:

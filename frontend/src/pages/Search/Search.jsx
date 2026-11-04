@@ -49,7 +49,8 @@ function Search() {
     getVideos({ page: 1, limit: 12, query, sortBy: 'createdAt', sortType: 'desc' })
       .then((response) => {
         if (cancelled) return;
-        const { docs, hasNextPage: nextExists } = response.data.data;
+        const docs = response?.data?.data?.docs || [];
+        const nextExists = response?.data?.data?.hasNextPage || false;
         setVideos(docs);
         setHasNextPage(nextExists);
         setError(null);
@@ -73,7 +74,8 @@ function Search() {
     setIsLoadingMore(true);
     try {
       const response = await getVideos({ page: nextPage, limit: 12, query, sortBy: 'createdAt', sortType: 'desc' });
-      const { docs, hasNextPage: nextExists } = response.data.data;
+      const docs = response?.data?.data?.docs || [];
+      const nextExists = response?.data?.data?.hasNextPage || false;
       setVideos((prev) => [...prev, ...docs]);
       setHasNextPage(nextExists);
       setPage(nextPage);

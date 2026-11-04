@@ -32,8 +32,8 @@ import Subscriptions from './pages/Subscriptions/Subscriptions';
 function App() {
   return (
     <Routes>
-      {/* Default redirect */}
-      <Route path="/" element={<Navigate to="/home" replace />} />
+      {/* Default redirect: direct unauthenticated users to login first */}
+      <Route path="/" element={<Navigate to="/login" replace />} />
 
       {/* Public routes — redirect away if already logged in */}
       <Route element={<PublicRoute />}>
@@ -57,8 +57,8 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
       </Route>
 
-      {/* Catch-all — redirect any unknown path to home */}
-      <Route path="*" element={<Navigate to="/home" replace />} />
+      {/* Catch-all — redirect any unknown path to login */}
+      <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );
 }

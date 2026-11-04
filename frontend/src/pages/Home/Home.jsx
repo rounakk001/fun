@@ -48,7 +48,8 @@ function Home() {
       }
 
       const response = await getVideos({ page: pageNum, limit: 12, sortBy: 'createdAt', sortType: 'desc' });
-      const { docs, hasNextPage: nextExists } = response.data.data;
+      const docs = response?.data?.data?.docs || [];
+      const nextExists = response?.data?.data?.hasNextPage || false;
       if (pageNum === 1) {
         setVideos(docs);
       } else {
