@@ -47,10 +47,13 @@ export const getVideoById = (videoId) => {
  */
 export const uploadVideo = (formData, onProgress) => {
   return axiosInstance.post('/videos', formData, {
+    timeout: 0,
+    maxContentLength: Infinity,
+    maxBodyLength: Infinity,
     onUploadProgress: (progressEvent) => {
       if (progressEvent.total) {
         const pct = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-        onProgress?.(pct);
+        onProgress?.(pct, progressEvent.loaded, progressEvent.total);
       }
     },
   });

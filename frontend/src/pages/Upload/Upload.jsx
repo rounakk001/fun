@@ -50,13 +50,15 @@ function Upload() {
   // ── Upload state ──────────────────────────────────────────────
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  // Phase: 'uploading' (bytes in flight) | 'processing' (Cloudinary side, 100% but no response yet)
+  const [uploadStats, setUploadStats] = useState({ loaded: 0, total: 0, speed: '', eta: '' });
+  // Phase: 'uploading' (bytes in flight) | 'processing' (storing on disk, 100% but no response yet)
   const [uploadPhase, setUploadPhase] = useState(null);
   const [serverError, setServerError] = useState(null);
 
   // Refs for hidden file inputs
   const videoInputRef = useRef(null);
   const thumbInputRef = useRef(null);
+  const lastProgressRef = useRef({ time: 0, loaded: 0 });
 
   // Unique IDs for form labels (accessibility)
   const titleId = useId();
@@ -115,13 +117,34 @@ function Upload() {
 
     setIsUploading(true);
     setUploadProgress(0);
+    setUploadStats({ loaded: 0, total: 0, speed: '', eta: '' });
     setUploadPhase('uploading');
+    lastProgressRef.current = { time: Date.now(), loaded: 0 };
 
     try {
-      const response = await uploadVideo(formData, (pct) => {
+      const response = await uploadVideo(formData, (pct, loaded, total) => {
         setUploadProgress(pct);
+
+        const now = Date.now();
+        const elapsed = (now - lastProgressRef.current.time) / 1000;
+        if (elapsed >= 0.35 && loaded > lastProgressRef.current.loaded && total) {
+          const bytesDiff = loaded - lastProgressRef.current.loaded;
+          const speedBytesPerSec = bytesDiff / elapsed;
+          const speedMb = (speedBytesPerSec / (1024 * 1024)).toFixed(1);
+          const remainingBytes = Math.max(0, total - loaded);
+          const remainingSecs = Math.max(1, Math.round(remainingBytes / speedBytesPerSec));
+          const etaText = remainingSecs < 60 ? `${remainingSecs}s` : `${Math.floor(remainingSecs / 60)}m ${remainingSecs % 60}s`;
+
+          setUploadStats({
+            loaded,
+            total,
+            speed: `${speedMb} MB/s`,
+            eta: etaText,
+          });
+          lastProgressRef.current = { time: now, loaded };
+        }
+
         if (pct === 100) {
-          // Bytes are on the server; Cloudinary processing begins
           setUploadPhase('processing');
         }
       });
@@ -380,9 +403,13 @@ function Upload() {
               {isUploading && (
                 <div className="upload-progress-block" aria-live="polite" aria-label={progressLabel}>
                   <div className="upload-progress-header">
-                    <span className="upload-progress-label">{progressLabel}</span>
+                    <span className="upload-progress-label">
+                      {uploadPhase === 'processing' ? '⚡ Storing & publishing video…' : `Uploading… ${uploadProgress}%`}
+                    </span>
                     {uploadPhase === 'uploading' && (
-                      <span className="upload-progress-pct">{uploadProgress}%</span>
+                      <span className="upload-progress-pct">
+                        {uploadStats.speed ? `${uploadStats.speed}${uploadStats.eta ? ` • ETA: ${uploadStats.eta}` : ''}` : `${uploadProgress}%`}
+                      </span>
                     )}
                   </div>
                   <div className="upload-progress-track" role="progressbar" aria-valuenow={uploadProgress} aria-valuemin={0} aria-valuemax={100}>
@@ -391,9 +418,15 @@ function Upload() {
                       style={{ width: `${uploadPhase === 'processing' ? 100 : uploadProgress}%` }}
                     />
                   </div>
+                  {uploadPhase === 'uploading' && uploadStats.total > 0 && (
+                    <div className="upload-progress-stats">
+                      <span>{formatBytes(uploadStats.loaded)} of {formatBytes(uploadStats.total)}</span>
+                      <span>{uploadProgress}%</span>
+                    </div>
+                  )}
                   {uploadPhase === 'processing' && (
                     <p className="upload-progress-note">
-                      Video uploaded successfully. Waiting for Cloudinary to process it…
+                      Upload complete! Finalizing storage and generating metadata…
                     </p>
                   )}
                 </div>

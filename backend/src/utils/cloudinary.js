@@ -91,8 +91,23 @@ const uploadOnCloudinary = async (localFilePath) => {
         const uniqueFileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}-${cleanName}${ext}`;
         const destPath = path.join(targetDir, uniqueFileName);
 
-        // Copy file to permanent storage
-        fs.copyFileSync(localFilePath, destPath);
+        // Move file directly to permanent storage (instant 0ms pointer move on same disk)
+        try {
+            await fs.promises.rename(localFilePath, destPath);
+        } catch (renameErr) {
+            // Fallback for cross-device mount (EXDEV): stream copy without blocking Node event loop
+            await new Promise((resolve, reject) => {
+                const rs = fs.createReadStream(localFilePath);
+                const ws = fs.createWriteStream(destPath);
+                rs.on("error", reject);
+                ws.on("error", reject);
+                ws.on("finish", () => {
+                    fs.unlink(localFilePath, () => {});
+                    resolve();
+                });
+                rs.pipe(ws);
+            });
+        }
 
         // Extract video duration if it's a video file
         let duration = 0;
@@ -100,7 +115,7 @@ const uploadOnCloudinary = async (localFilePath) => {
             duration = await getVideoDuration(destPath);
         }
 
-        // Clean up temp file
+        // Clean up temp file if still present
         if (fs.existsSync(localFilePath)) {
             try {
                 fs.unlinkSync(localFilePath);

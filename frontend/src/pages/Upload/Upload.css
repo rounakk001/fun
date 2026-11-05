@@ -371,6 +371,16 @@
   width: 100% !important;
 }
 
+.upload-progress-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+  margin-top: 2px;
+}
+
 .upload-progress-note {
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);

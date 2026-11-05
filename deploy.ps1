@@ -60,8 +60,20 @@ echo "--> [EC2] Reloading services with zero downtime..."
 pm2 reload yeonix-backend --update-env || pm2 restart yeonix-backend
 pm2 reload yeonix-ml || pm2 restart yeonix-ml
 
+echo "--> [EC2] Optimizing Nginx upload streaming and TCP throughput..."
+# Optimize Nginx upload streaming (zero buffering)
+if grep -q "proxy_pass http://127.0.0.1:8000" /etc/nginx/sites-available/yeonix 2>/dev/null; then
+    if ! grep -q "proxy_request_buffering off" /etc/nginx/sites-available/yeonix 2>/dev/null; then
+        sudo sed -i '/proxy_pass http:\/\/127.0.0.1:8000;/a \        proxy_request_buffering off;\n        proxy_buffering off;\n        client_max_body_size 1024M;' /etc/nginx/sites-available/yeonix
+    fi
+fi
+
+# Enable TCP BBR congestion control for faster upload network throughput
+sudo sysctl -w net.core.default_qdisc=fq 2>/dev/null || true
+sudo sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null || true
+
 echo "--> [EC2] Reloading Nginx web server..."
-sudo systemctl reload nginx
+sudo nginx -t && sudo systemctl reload nginx || sudo systemctl reload nginx
 
 echo "--> [EC2] All services updated successfully!"
 '@
