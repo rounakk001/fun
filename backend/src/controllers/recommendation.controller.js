@@ -183,3 +183,124 @@ export const getTrendingFeed = asyncHandler(async (req, res) => {
     )
   );
 });
+
+export const getShortsFeed = asyncHandler(async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit, 10) || 10, 30);
+  const userId = req.user?._id?.toString() || null;
+  const isPremium = req.query.isPremium === "true" || req.query.isPremium === true;
+  const currentShortId = req.query.currentShortId || null;
+
+  const premiumFilter = isPremium ? { isPremium: true } : { isPremium: { $ne: true } };
+
+  let recVideoIds = [];
+  let strategy = "mongodb_fallback";
+
+  if (currentShortId) {
+    // 1. Query ML recommendation service for similar relatable shorts
+    const mlRes = await mlClient.getSimilarVideos(currentShortId, userId, limit);
+    if (mlRes && mlRes.recommendations && mlRes.recommendations.length > 0) {
+      recVideoIds = mlRes.recommendations
+        .map((r) => r.video_id)
+        .filter((id) => id !== currentShortId && mongoose.Types.ObjectId.isValid(id));
+      strategy = mlRes.strategy || "hybrid_ml";
+    }
+  } else {
+    // Initial feed: query home recommendation from ML
+    const mlRes = await mlClient.getHomeRecommendations(userId, limit);
+    if (mlRes && mlRes.recommendations && mlRes.recommendations.length > 0) {
+      recVideoIds = mlRes.recommendations
+        .map((r) => r.video_id)
+        .filter((id) => mongoose.Types.ObjectId.isValid(id));
+      strategy = mlRes.strategy || "hybrid_ml";
+    }
+  }
+
+  // Hydrate from MongoDB with isShort: true and strict premiumFilter
+  const objectIds = recVideoIds.map((id) => new mongoose.Types.ObjectId(id));
+  let shorts = [];
+
+  if (objectIds.length > 0) {
+    const found = await Video.find({
+      _id: { $in: objectIds },
+      isPublished: true,
+      isShort: true,
+      ...premiumFilter
+    }).populate("owner", "fullName username avatar");
+
+    const foundMap = new Map(found.map((v) => [v._id.toString(), v]));
+    for (const idStr of recVideoIds) {
+      if (foundMap.has(idStr)) {
+        shorts.push(foundMap.get(idStr));
+      }
+    }
+  }
+
+  // Backfill if fewer than limit
+  if (shorts.length < limit) {
+    const existingIds = new Set(shorts.map((s) => s._id.toString()));
+    if (currentShortId) existingIds.add(currentShortId);
+
+    const query = {
+      isPublished: true,
+      isShort: true,
+      _id: { $nin: Array.from(existingIds).map((id) => new mongoose.Types.ObjectId(id)) },
+      ...premiumFilter
+    };
+
+    const fallbackShorts = await Video.find(query)
+      .sort({ createdAt: -1 })
+      .limit(limit - shorts.length)
+      .populate("owner", "fullName username avatar");
+
+    shorts = [...shorts, ...fallbackShorts];
+  }
+
+  // Enrich with likesCount, isLiked, isDisliked, commentsCount
+  const userObjectId = req.user?._id ? new mongoose.Types.ObjectId(req.user._id) : null;
+  const enrichedShorts = await Promise.all(
+    shorts.map(async (doc) => {
+      const shortObj = doc.toObject();
+
+      const [likes, commentsCount, subscription] = await Promise.all([
+        import("../models/like.model.js").then(({ Like }) =>
+          Like.find({ video: doc._id })
+        ),
+        import("../models/comment.model.js").then(({ Comment }) =>
+          Comment.countDocuments({ video: doc._id })
+        ),
+        userObjectId && doc.owner?._id
+          ? import("../models/subscription.model.js").then(({ Subscription }) =>
+              Subscription.findOne({ channel: doc.owner._id, subscriber: userObjectId })
+            )
+          : Promise.resolve(null)
+      ]);
+
+      const realLikes = likes.filter((l) => !l.isDislike);
+      const realDislikes = likes.filter((l) => l.isDislike);
+
+      shortObj.likesCount = realLikes.length;
+      shortObj.commentsCount = commentsCount;
+      shortObj.isLiked = userObjectId
+        ? realLikes.some((l) => l.likedBy?.toString() === userObjectId.toString())
+        : false;
+      shortObj.isDisliked = userObjectId
+        ? realDislikes.some((l) => l.likedBy?.toString() === userObjectId.toString())
+        : false;
+      shortObj.isSubscribed = Boolean(subscription);
+
+      return shortObj;
+    })
+  );
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        shorts: enrichedShorts,
+        total: enrichedShorts.length,
+        strategy
+      },
+      "Shorts feed fetched successfully"
+    )
+  );
+});

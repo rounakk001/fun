@@ -28,3 +28,10 @@ export const getHomeRecommendations = (params = {}) => {
 export const getTrendingRecommendations = (params = {}) => {
   return axiosInstance.get('/recommendations/trending', { params });
 };
+
+/**
+ * Fetch ML-powered Reels/Shorts feed (supports ?isPremium=true and ?currentShortId)
+ */
+export const getShortsFeed = (params = {}) => {
+  return axiosInstance.get('/recommendations/shorts', { params });
+};

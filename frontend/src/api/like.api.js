@@ -9,6 +9,14 @@ export const toggleVideoLike = (videoId) => {
 };
 
 /**
+ * Toggle dislike on a video.
+ * @param {string} videoId 
+ */
+export const toggleVideoDislike = (videoId) => {
+  return axiosInstance.post(`/likes/toggle/d/${videoId}`);
+};
+
+/**
  * Toggle like on a comment.
  * @param {string} commentId 
  */

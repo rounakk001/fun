@@ -2,7 +2,8 @@ import { Router } from "express";
 import {
   getSimilarVideos,
   getHomeFeed,
-  getTrendingFeed
+  getTrendingFeed,
+  getShortsFeed
 } from "../controllers/recommendation.controller.js";
 import { verifyJWTOptional } from "../middlewares/auth.middleware.js";
 
@@ -12,5 +13,6 @@ const router = Router();
 router.route("/similar/:videoId").get(verifyJWTOptional, getSimilarVideos);
 router.route("/home").get(verifyJWTOptional, getHomeFeed);
 router.route("/trending").get(verifyJWTOptional, getTrendingFeed);
+router.route("/shorts").get(verifyJWTOptional, getShortsFeed);
 
 export default router;

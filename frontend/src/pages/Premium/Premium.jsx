@@ -263,6 +263,11 @@ function Premium() {
                     </div>
                   ) : (
                     <>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1.2rem' }}>
+                        <Link to="/shorts?premium=true" className="btn-vault-action btn-vault-action--short">
+                          <span>▶</span> Open Fullscreen VIP Reels
+                        </Link>
+                      </div>
                       <div className="premium-shorts-grid">
                         {videos.map((short) => (
                           <PremiumShortCard key={short._id} short={short} />
@@ -296,7 +301,7 @@ function PremiumShortCard({ short }) {
   const ownerInitial = ownerName[0]?.toUpperCase() || '?';
 
   return (
-    <Link to={`/watch/${short._id}`} className="premium-short-card">
+    <Link to="/shorts?premium=true" className="premium-short-card" title="Play in VIP Reels Player">
       <div className="premium-short-card__thumb-wrap">
         <img
           src={short.thumbnail}
