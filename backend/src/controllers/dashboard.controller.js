@@ -7,7 +7,7 @@ import {ApiResponse} from "../utils/ApiResponse.js"
 import {asyncHandler} from "../utils/asyncHandler.js"
 
 const getChannelStats = asyncHandler(async (req, res) => {
-    const channelId = req.user._id
+    const channelId = new mongoose.Types.ObjectId(req.user._id)
 
     const videoStats = await Video.aggregate([
         { $match: { owner: channelId } },
@@ -48,7 +48,7 @@ const getChannelStats = asyncHandler(async (req, res) => {
 })
 
 const getChannelVideos = asyncHandler(async (req, res) => {
-    const channelId = req.user._id
+    const channelId = new mongoose.Types.ObjectId(req.user._id)
 
     const videos = await Video.aggregate([
         { $match: { owner: channelId } },

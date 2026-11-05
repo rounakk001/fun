@@ -131,7 +131,19 @@ function Dashboard() {
                             <td>
                               <Link to={`/watch/${video._id}`} className="dashboard-table-video" style={{ textDecoration: 'none', color: 'inherit' }}>
                                 <img src={video.thumbnail} alt="" className="dashboard-table-thumb" />
-                                <span className="dashboard-table-vtitle">{video.isPremium && (<span className="dashboard-premium-badge" title="Premium VIP video">?? </span>)}{video.title}</span>
+                                <span className="dashboard-table-vtitle">
+                                  {video.isPremium && (
+                                    <span style={{ color: '#f5c518', marginRight: '6px', fontWeight: 'bold' }} title="VIP Vault Video">
+                                      👑 VIP
+                                    </span>
+                                  )}
+                                  {video.isShort && (
+                                    <span style={{ color: '#ff4444', marginRight: '6px', fontWeight: 'bold' }} title="Short Video">
+                                      ▶ Short
+                                    </span>
+                                  )}
+                                  {video.title}
+                                </span>
                               </Link>
                             </td>
                             <td>

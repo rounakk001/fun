@@ -13,6 +13,7 @@ function Premium() {
   const [isUnlocked, setIsUnlocked] = useState(() => {
     return sessionStorage.getItem(STORAGE_KEY) === 'true';
   });
+  const [activeTab, setActiveTab] = useState('videos');
 
   // Passcode verification state
   const [code, setCode] = useState('');
@@ -27,15 +28,19 @@ function Premium() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   // ── Fetch Premium Videos (isPremium: true ONLY) ──────────────────────
-  const fetchPremiumVideos = useCallback(async (pageNum = 1) => {
+  const fetchPremiumVideos = useCallback(async (pageNum = 1, tab = 'videos') => {
     try {
-      const response = await getVideos({
+      const params = {
         page: pageNum,
         limit: 12,
         isPremium: true,
         sortBy: 'createdAt',
-        sortType: 'desc'
-      });
+        sortType: 'desc',
+      };
+      if (tab === 'shorts') params.isShort = true;
+      // videos tab: isShort NOT set, so backend defaults to excluding shorts
+
+      const response = await getVideos(params);
       const docs = response?.data?.data?.docs || [];
       const nextExists = response?.data?.data?.hasNextPage || false;
 
@@ -54,9 +59,11 @@ function Premium() {
   useEffect(() => {
     if (isUnlocked) {
       setIsLoading(true);
-      fetchPremiumVideos(1).finally(() => setIsLoading(false));
+      setVideos([]);
+      setPage(1);
+      fetchPremiumVideos(1, activeTab).finally(() => setIsLoading(false));
     }
-  }, [isUnlocked, fetchPremiumVideos]);
+  }, [isUnlocked, activeTab, fetchPremiumVideos]);
 
   // ── Unlock Handler ──────────────────────────────────────────────────
   const handleUnlock = async (e) => {
@@ -93,7 +100,7 @@ function Premium() {
   const handleLoadMore = async () => {
     const nextPage = page + 1;
     setIsLoadingMore(true);
-    await fetchPremiumVideos(nextPage);
+    await fetchPremiumVideos(nextPage, activeTab);
     setPage(nextPage);
     setIsLoadingMore(false);
   };
@@ -161,8 +168,25 @@ function Premium() {
                 </div>
 
                 <div className="premium-hero__actions">
-                  <Link to="/upload?premium=true" className="btn-premium-upload">
-                    <span>✦</span> Upload to Vault
+                  <div className="premium-tabs">
+                    <button
+                      className={`premium-tab${activeTab === 'videos' ? ' premium-tab--active' : ''}`}
+                      onClick={() => { setActiveTab('videos'); setPage(1); }}
+                    >
+                      🎬 Videos
+                    </button>
+                    <button
+                      className={`premium-tab${activeTab === 'shorts' ? ' premium-tab--active' : ''}`}
+                      onClick={() => { setActiveTab('shorts'); setPage(1); }}
+                    >
+                      ▶ Shorts
+                    </button>
+                  </div>
+                  <Link
+                    to={activeTab === 'shorts' ? '/upload?premium=true&short=true' : '/upload?premium=true'}
+                    className="btn-premium-upload"
+                  >
+                    <span>✦</span> {activeTab === 'shorts' ? 'Upload Short to Vault' : 'Upload to Vault'}
                   </Link>
                   <button onClick={handleLock} className="btn-lock" title="Lock the VIP vault">
                     🔒 Lock Vault

@@ -17,12 +17,14 @@ function Upload() {
   const navigate = useNavigate();
   const location = useLocation();
   const isInitiallyPremium = new URLSearchParams(location.search).get('premium') === 'true';
+  const isInitiallyShort = new URLSearchParams(location.search).get('short') === 'true';
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // ── Form state ────────────────────────────────────────────────
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const isPremium = isInitiallyPremium;
+  const isShort = isInitiallyShort;
   const [videoFile, setVideoFile] = useState(null);
   const [thumbnailFile, setThumbnailFile] = useState(null);
   const [thumbnailPreview, setThumbnailPreview] = useState(null);
@@ -92,6 +94,9 @@ function Upload() {
     if (isPremium) {
       formData.append('isPremium', 'true');
     }
+    if (isShort) {
+      formData.append('isShort', 'true');
+    }
 
     setIsUploading(true);
     setUploadProgress(0);
@@ -109,6 +114,8 @@ function Upload() {
       const newVideoId = response.data.data._id;
       if (isPremium) {
         navigate('/premium', { replace: true });
+      } else if (isShort) {
+        navigate('/shorts', { replace: true });
       } else {
         navigate(`/watch/${newVideoId}`, { replace: true });
       }
@@ -343,8 +350,8 @@ function Upload() {
                 </div>
               )}
 
-              {/* ── VIP Vault Badge (Only visible when uploading via VIP Vault) ── */}
-              {isPremium && (
+              {/* ── VIP Vault Badge (Only visible when uploading via VIP Vault, not a short) ── */}
+              {isPremium && !isShort && (
                 <div style={{
                   background: 'linear-gradient(135deg, rgba(245, 197, 24, 0.12) 0%, rgba(20, 20, 20, 0.6) 100%)',
                   border: '1.5px solid rgba(245, 197, 24, 0.45)',
@@ -363,6 +370,56 @@ function Upload() {
                     </div>
                     <div style={{ fontSize: '0.82rem', color: '#aaa', marginTop: '0.2rem' }}>
                       This video is protected and will only appear inside the secret VIP Vault. It is strictly hidden from the public home feed.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Short Badge (Only visible when uploading a short, not premium) ── */}
+              {isShort && !isPremium && (
+                <div style={{
+                  background: 'linear-gradient(135deg, rgba(255,68,68,0.12) 0%, rgba(20,20,20,0.6) 100%)',
+                  border: '1.5px solid rgba(255,68,68,0.45)',
+                  borderRadius: '12px',
+                  padding: '1rem 1.25rem',
+                  margin: '1.5rem 0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+                }}>
+                  <span style={{ fontSize: '1.5rem' }}>▶</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, color: '#ff4444', fontSize: '0.98rem', letterSpacing: '0.02em' }}>
+                      Publishing as a Short
+                    </div>
+                    <div style={{ fontSize: '0.82rem', color: '#aaa', marginTop: '0.2rem' }}>
+                      This will appear in the Shorts section. Keep it short and punchy!
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── VIP Short Badge (Premium + Short) ── */}
+              {isPremium && isShort && (
+                <div style={{
+                  background: 'linear-gradient(135deg, rgba(245,197,24,0.12) 0%, rgba(255,68,68,0.08) 100%)',
+                  border: '1.5px solid rgba(245,197,24,0.45)',
+                  borderRadius: '12px',
+                  padding: '1rem 1.25rem',
+                  margin: '1.5rem 0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+                }}>
+                  <span style={{ fontSize: '1.5rem' }}>👑▶</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, color: '#f5c518', fontSize: '0.98rem', letterSpacing: '0.02em' }}>
+                      Publishing VIP Short to Vault
+                    </div>
+                    <div style={{ fontSize: '0.82rem', color: '#aaa', marginTop: '0.2rem' }}>
+                      This short will only appear inside the VIP Vault Shorts section.
                     </div>
                   </div>
                 </div>

@@ -420,6 +420,27 @@ function Watch() {
                       👑 VIP Vault
                     </span>
                   )}
+                  {video.isShort && (
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        background: 'rgba(255, 68, 68, 0.15)',
+                        border: '1px solid rgba(255, 68, 68, 0.4)',
+                        color: '#ff4444',
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        fontSize: '0.8rem',
+                        fontWeight: '700',
+                        marginRight: '8px',
+                        verticalAlign: 'middle',
+                      }}
+                      title="Yeonix Short"
+                    >
+                      ▶ Short
+                    </span>
+                  )}
                   {video.title}
                 </h1>
 

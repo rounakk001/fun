@@ -271,3 +271,33 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+.premium-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.premium-tab {
+  padding: 0.5rem 1.25rem;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  color: #aaa;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.premium-tab:hover {
+  background: rgba(245,197,24,0.1);
+  border-color: rgba(245,197,24,0.3);
+  color: #f5c518;
+}
+
+.premium-tab--active {
+  background: rgba(245,197,24,0.15);
+  border-color: rgba(245,197,24,0.5);
+  color: #f5c518;
+}

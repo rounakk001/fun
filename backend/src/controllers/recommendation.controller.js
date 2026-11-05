@@ -29,6 +29,7 @@ async function hydrateRecommendations(recItems, excludeId = null, isPremium = fa
   const videos = await Video.find({
     _id: { $in: objectIds },
     isPublished: true,
+    isShort: { $ne: true },
     ...premiumFilter
   }).populate("owner", "fullName username avatar");
 
@@ -58,7 +59,7 @@ async function hydrateRecommendations(recItems, excludeId = null, isPremium = fa
  */
 async function getFallbackVideos(limit = 10, excludeId = null, isPremium = false) {
   const premiumFilter = isPremium ? { isPremium: true } : { isPremium: { $ne: true } };
-  const query = { isPublished: true, ...premiumFilter };
+  const query = { isPublished: true, isShort: { $ne: true }, ...premiumFilter };
   if (excludeId && mongoose.Types.ObjectId.isValid(excludeId)) {
     query._id = { $ne: new mongoose.Types.ObjectId(excludeId) };
   }

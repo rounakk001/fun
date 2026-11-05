@@ -8,7 +8,7 @@ import {uploadOnCloudinary} from "../utils/cloudinary.js"
 
 
 const getAllVideos = asyncHandler(async (req, res) => {
-    const { page = 1, limit = 10, query, sortBy, sortType, userId, isPremium } = req.query
+    const { page = 1, limit = 10, query, sortBy, sortType, userId, isPremium, isShort } = req.query
 
     const matchStage = {
         isPublished: true
@@ -19,6 +19,13 @@ const getAllVideos = asyncHandler(async (req, res) => {
         matchStage.isPremium = true
     } else {
         matchStage.isPremium = { $ne: true }
+    }
+
+    // isShort filter — strict separation: shorts vs regular videos
+    if (isShort === "true" || isShort === true) {
+        matchStage.isShort = true
+    } else {
+        matchStage.isShort = { $ne: true }
     }
 
     if (query) {
@@ -68,7 +75,7 @@ const getAllVideos = asyncHandler(async (req, res) => {
 })
 
 const publishAVideo = asyncHandler(async (req, res) => {
-    const { title, description, tags, category, isPremium } = req.body || {}
+    const { title, description, tags, category, isPremium, isShort } = req.body || {}
 
     if (!title?.trim() || !description?.trim()) {
         throw new ApiError(400, "Title and description are required")
@@ -110,6 +117,7 @@ const publishAVideo = asyncHandler(async (req, res) => {
         tags: parsedTags,
         category: typeof category === "string" ? category.trim() : "",
         isPremium: isPremium === "true" || isPremium === true,
+        isShort: isShort === "true" || isShort === true,
         owner: req.user._id
     })
 

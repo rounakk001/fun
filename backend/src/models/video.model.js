@@ -46,6 +46,11 @@ const videoSchema = new Schema(
             default: false,
             index: true
         },
+        isShort: {
+            type: Boolean,
+            default: false,
+            index: true
+        },
         owner: {
             type: Schema.Types.ObjectId,
             ref: "User"

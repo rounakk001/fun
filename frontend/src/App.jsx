@@ -14,6 +14,7 @@ import Dashboard from './pages/Dashboard/Dashboard';
 import History from './pages/History/History';
 import Subscriptions from './pages/Subscriptions/Subscriptions';
 import Premium from './pages/Premium/Premium';
+import Shorts from './pages/Shorts/Shorts';
 
 /**
  * App — route definitions.
@@ -57,6 +58,7 @@ function App() {
         <Route path="/subscriptions" element={<Subscriptions />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/premium" element={<Premium />} />
+        <Route path="/shorts" element={<Shorts />} />
       </Route>
 
       {/* Catch-all — redirect any unknown path to login */}
