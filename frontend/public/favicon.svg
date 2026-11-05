@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="yeonixGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff4444"/>
+      <stop offset="100%" stop-color="#ff1a40"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="#0c0c10"/>
+  <rect width="64" height="64" rx="15" fill="none" stroke="rgba(255, 68, 68, 0.45)" stroke-width="1.5"/>
+  <text x="32" y="47.5" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="44" font-weight="900" fill="url(#yeonixGrad)" text-anchor="middle">Y</text>
+</svg>
