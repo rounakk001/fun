@@ -71,6 +71,65 @@
   padding: var(--space-8);
 }
 
+/* ── Upload Format Selector ─────────────────────────────────────── */
+.upload-type-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.9rem;
+  padding: 0.45rem;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+}
+
+.upload-type-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.85rem 1.25rem;
+  background: transparent;
+  border: 1.5px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  color: var(--color-text-secondary);
+  text-align: left;
+}
+
+.upload-type-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-text-primary);
+}
+
+.upload-type-btn--active {
+  background: linear-gradient(135deg, rgba(255, 68, 68, 0.15) 0%, rgba(255, 68, 68, 0.04) 100%);
+  border-color: rgba(255, 68, 68, 0.6);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.upload-type-btn__icon {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.upload-type-btn__text {
+  display: flex;
+  flex-direction: column;
+}
+
+.upload-type-btn__label {
+  font-size: 0.96rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.upload-type-btn__hint {
+  font-size: 0.74rem;
+  opacity: 0.7;
+  font-weight: 500;
+}
+
 /* Required star */
 .upload-required {
   color: var(--color-accent);

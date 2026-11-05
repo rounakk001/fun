@@ -32,14 +32,14 @@ function Sidebar({ isOpen, onClose }) {
     },
     {
       id: 'nav-shorts',
-      label: '▶ Shorts',
+      label: 'Shorts',
       to: '/shorts',
       icon: ShortsIcon,
       enabled: true,
     },
     {
       id: 'nav-premium',
-      label: '👑 VIP Vault',
+      label: 'VIP Vault',
       to: '/premium',
       icon: CrownIcon,
       enabled: true,
@@ -328,8 +328,8 @@ function CrownIcon() {
 
 function ShortsIcon() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="5 3 19 12 5 21 5 3" fill="currentColor" stroke="none" />
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="6 4 20 12 6 20 6 4" fill="rgba(255, 68, 68, 0.2)" />
     </svg>
   );
 }

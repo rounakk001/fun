@@ -52,9 +52,17 @@ function Shorts() {
         <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <main className="shorts-main">
           <div className="shorts-header">
-            <span className="shorts-header__icon">▶</span>
-            <h1 className="shorts-header__title">Shorts</h1>
-            <p className="shorts-header__sub">Quick clips from the community</p>
+            <div className="shorts-header__left">
+              <span className="shorts-header__icon">▶</span>
+              <div>
+                <h1 className="shorts-header__title">Shorts</h1>
+                <p className="shorts-header__sub">Quick vertical clips from the Yeonix community</p>
+              </div>
+            </div>
+
+            <Link to="/upload?short=true" className="shorts-header__upload-btn">
+              <span>▶</span> Upload Short
+            </Link>
           </div>
 
           {isLoading ? (

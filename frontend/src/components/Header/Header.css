@@ -153,6 +153,83 @@
   opacity: 0.4;
 }
 
+/* ── Create / Upload Button ──────────────────────────────────── */
+.header__upload-wrapper {
+  position: relative;
+}
+
+.header__create-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--color-text-primary);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.header__create-btn:hover,
+.header__create-btn--active {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+}
+
+.header__create-label {
+  display: inline;
+}
+
+@media (max-width: 600px) {
+  .header__create-label {
+    display: none;
+  }
+  .header__create-btn {
+    padding: 0.45rem;
+    border-radius: var(--radius-md);
+  }
+}
+
+.header__create-dropdown {
+  width: 250px;
+  top: calc(100% + 8px);
+}
+
+.header__create-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.75rem 1rem;
+  text-align: left;
+  width: 100%;
+}
+
+.create-menu-icon {
+  font-size: 1.35rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.create-menu-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.create-menu-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.create-menu-desc {
+  font-size: 0.74rem;
+  color: var(--color-text-muted);
+}
+
 /* ── Avatar button ────────────────────────────────────────────── */
 
 .header__user {

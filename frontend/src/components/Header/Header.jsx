@@ -20,14 +20,19 @@ function Header({ onMenuToggle }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [uploadDropdownOpen, setUploadDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const dropdownRef = useRef(null);
+  const uploadDropdownRef = useRef(null);
 
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
         setDropdownOpen(false);
+      }
+      if (uploadDropdownRef.current && !uploadDropdownRef.current.contains(e.target)) {
+        setUploadDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -37,7 +42,10 @@ function Header({ onMenuToggle }) {
   // Close dropdown on Escape key
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') setDropdownOpen(false);
+      if (e.key === 'Escape') {
+        setDropdownOpen(false);
+        setUploadDropdownOpen(false);
+      }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
@@ -117,16 +125,72 @@ function Header({ onMenuToggle }) {
 
       {/* ── Right: Actions + User ──────────────────────────────── */}
       <div className="header__right">
-        {/* Upload */}
-        <button
-          id="header-upload-btn"
-          className="header__icon-btn"
-          aria-label="Upload video"
-          title="Upload video"
-          onClick={() => navigate('/upload')}
-        >
-          <UploadIcon />
-        </button>
+        {/* Upload / Create Menu */}
+        <div className="header__upload-wrapper" ref={uploadDropdownRef}>
+          <button
+            id="header-upload-btn"
+            className={`header__create-btn ${uploadDropdownOpen ? 'header__create-btn--active' : ''}`}
+            aria-label="Create or upload"
+            title="Create"
+            onClick={() => setUploadDropdownOpen((prev) => !prev)}
+            aria-haspopup="true"
+            aria-expanded={uploadDropdownOpen}
+          >
+            <UploadIcon />
+            <span className="header__create-label">Create</span>
+          </button>
+
+          {uploadDropdownOpen && (
+            <div className="header__dropdown header__create-dropdown" role="menu">
+              <button
+                className="header__dropdown-item header__create-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setUploadDropdownOpen(false);
+                  navigate('/upload');
+                }}
+              >
+                <span className="create-menu-icon">🎬</span>
+                <div className="create-menu-info">
+                  <span className="create-menu-title">Upload Video</span>
+                  <span className="create-menu-desc">Standard 16:9 format</span>
+                </div>
+              </button>
+
+              <button
+                className="header__dropdown-item header__create-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setUploadDropdownOpen(false);
+                  navigate('/upload?short=true');
+                }}
+              >
+                <span className="create-menu-icon" style={{ color: '#ff4444' }}>▶</span>
+                <div className="create-menu-info">
+                  <span className="create-menu-title">Upload Short</span>
+                  <span className="create-menu-desc">Vertical 9:16 clip</span>
+                </div>
+              </button>
+
+              <div className="header__dropdown-divider" />
+
+              <button
+                className="header__dropdown-item header__create-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setUploadDropdownOpen(false);
+                  navigate('/premium');
+                }}
+              >
+                <span className="create-menu-icon" style={{ color: '#f5c518' }}>👑</span>
+                <div className="create-menu-info">
+                  <span className="create-menu-title" style={{ color: '#f5c518' }}>VIP Vault</span>
+                  <span className="create-menu-desc">Exclusive member lounge</span>
+                </div>
+              </button>
+            </div>
+          )}
+        </div>
 
 
         {/* Notifications — placeholder */}

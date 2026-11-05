@@ -24,7 +24,8 @@ function Upload() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const isPremium = isInitiallyPremium;
-  const isShort = isInitiallyShort;
+  const [uploadType, setUploadType] = useState(isInitiallyShort ? 'short' : 'video');
+  const isShort = uploadType === 'short';
   const [videoFile, setVideoFile] = useState(null);
   const [thumbnailFile, setThumbnailFile] = useState(null);
   const [thumbnailPreview, setThumbnailPreview] = useState(null);
@@ -113,7 +114,7 @@ function Upload() {
 
       const newVideoId = response.data.data._id;
       if (isPremium) {
-        navigate('/premium', { replace: true });
+        navigate(isShort ? '/premium?tab=shorts' : '/premium', { replace: true });
       } else if (isShort) {
         navigate('/shorts', { replace: true });
       } else {
@@ -155,9 +156,15 @@ function Upload() {
           <div className="upload-container">
             {/* ── Page heading ─────────────────────────────── */}
             <div className="upload-heading">
-              <h1 className="upload-heading__title">Upload a video</h1>
+              <h1 className="upload-heading__title">
+                {isPremium ? (isShort ? '👑 Upload VIP Short' : '👑 Upload to VIP Vault') : (isShort ? '▶ Upload a Short' : 'Upload a Video')}
+              </h1>
               <p className="upload-heading__sub">
-                Share your content with the Yeonix community.
+                {isPremium
+                  ? 'Exclusive release for VIP members. Strictly isolated from the public feed.'
+                  : (isShort
+                    ? 'Vertical 9:16 clip. Appears in the dedicated Shorts feed.'
+                    : 'Standard 16:9 video for your channel and the home feed.')}
               </p>
             </div>
 
@@ -168,6 +175,34 @@ function Upload() {
               noValidate
               aria-label="Video upload form"
             >
+              {/* ── Segmented Format Selector (Video vs Short) ── */}
+              <div className="upload-type-selector" role="radiogroup" aria-label="Upload content type">
+                <button
+                  type="button"
+                  className={`upload-type-btn ${!isShort ? 'upload-type-btn--active' : ''}`}
+                  onClick={() => setUploadType('video')}
+                  disabled={isUploading}
+                >
+                  <span className="upload-type-btn__icon">{isPremium ? '👑' : '🎬'}</span>
+                  <div className="upload-type-btn__text">
+                    <span className="upload-type-btn__label">{isPremium ? 'VIP Video' : 'Regular Video'}</span>
+                    <span className="upload-type-btn__hint">16:9 Landscape</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  className={`upload-type-btn ${isShort ? 'upload-type-btn--active' : ''}`}
+                  onClick={() => setUploadType('short')}
+                  disabled={isUploading}
+                >
+                  <span className="upload-type-btn__icon">{isPremium ? '👑▶' : '▶'}</span>
+                  <div className="upload-type-btn__text">
+                    <span className="upload-type-btn__label">{isPremium ? 'VIP Short' : 'Short Clip'}</span>
+                    <span className="upload-type-btn__hint">9:16 Vertical</span>
+                  </div>
+                </button>
+              </div>
               {/* ── Server error banner ───────────────────── */}
               {serverError && (
                 <div className="upload-error-banner" role="alert">
@@ -450,7 +485,9 @@ function Upload() {
                   ) : (
                     <>
                       <UploadIcon />
-                      Publish video
+                      {isPremium
+                        ? (isShort ? 'Publish VIP Short' : 'Publish VIP Video')
+                        : (isShort ? 'Publish Short' : 'Publish Video')}
                     </>
                   )}
                 </button>

@@ -89,6 +89,15 @@
   stroke: #ffd700 !important;
 }
 
+#nav-shorts.sidebar__nav-item--active {
+  background-color: rgba(255, 68, 68, 0.14) !important;
+  color: #ff5555 !important;
+}
+
+#nav-shorts.sidebar__nav-item--active svg {
+  stroke: #ff5555 !important;
+}
+
 .sidebar__nav {
   display: flex;
   flex-direction: column;
