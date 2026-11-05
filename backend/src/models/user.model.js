@@ -45,6 +45,10 @@ const userSchema = new Schema(
         },
         refreshToken: {
             type: String
+        },
+        isPremiumUnlocked: {
+            type: Boolean,
+            default: false
         }
 
     },

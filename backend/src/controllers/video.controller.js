@@ -16,6 +16,12 @@ const getAllVideos = asyncHandler(async (req, res) => {
 
     // Strict separation: Premium section vs Normal Home feed
     if (isPremium === "true" || isPremium === true) {
+        if (!req.user) {
+            throw new ApiError(401, "Authentication required to access VIP Vault")
+        }
+        if (!req.user.isPremiumUnlocked) {
+            throw new ApiError(403, "VIP Vault is locked. Please enter the VIP passcode to unlock.")
+        }
         matchStage.isPremium = true
     } else {
         matchStage.isPremium = { $ne: true }
@@ -334,6 +340,10 @@ const verifyPremiumCode = asyncHandler(async (req, res) => {
 
     if (!code || code.trim().toLowerCase() !== validCode.toLowerCase()) {
         throw new ApiError(401, "Invalid access code. Please enter the correct code to unlock.")
+    }
+
+    if (req.user?._id) {
+        await User.findByIdAndUpdate(req.user._id, { isPremiumUnlocked: true })
     }
 
     return res

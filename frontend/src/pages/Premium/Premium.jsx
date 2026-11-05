@@ -4,9 +4,8 @@ import Header from '../../components/Header/Header';
 import Sidebar from '../../components/Sidebar/Sidebar';
 import VideoGrid from '../../components/VideoGrid/VideoGrid';
 import { getVideos, verifyPremiumAccessCode } from '../../api/video.api';
+import { useAuth } from '../../context/AuthContext';
 import './Premium.css';
-
-const STORAGE_KEY = 'yeonix_premium_unlocked';
 
 function formatDuration(seconds) {
   if (!seconds && seconds !== 0) return '';
@@ -17,14 +16,23 @@ function formatDuration(seconds) {
 }
 
 function Premium() {
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = searchParams.get('tab') === 'shorts' ? 'shorts' : 'videos';
 
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 768);
-  const [isUnlocked, setIsUnlocked] = useState(() => {
-    return sessionStorage.getItem(STORAGE_KEY) === 'true';
-  });
+  const [isUnlocked, setIsUnlocked] = useState(false);
   const [activeTab, setActiveTab] = useState(initialTab);
+
+  // Sync unlock state strictly to the current authenticated user's ID
+  useEffect(() => {
+    if (!user?._id) {
+      setIsUnlocked(false);
+      return;
+    }
+    const unlocked = sessionStorage.getItem(`yeonix_premium_unlocked_${user._id}`) === 'true';
+    setIsUnlocked(unlocked);
+  }, [user?._id]);
 
   // Passcode verification state
   const [code, setCode] = useState('');
@@ -95,7 +103,9 @@ function Premium() {
 
     try {
       await verifyPremiumAccessCode(code.trim());
-      sessionStorage.setItem(STORAGE_KEY, 'true');
+      if (user?._id) {
+        sessionStorage.setItem(`yeonix_premium_unlocked_${user._id}`, 'true');
+      }
       setIsUnlocked(true);
       setCode('');
     } catch (err) {
@@ -109,7 +119,9 @@ function Premium() {
   };
 
   const handleLock = () => {
-    sessionStorage.removeItem(STORAGE_KEY);
+    if (user?._id) {
+      sessionStorage.removeItem(`yeonix_premium_unlocked_${user._id}`);
+    }
     setIsUnlocked(false);
     setVideos([]);
   };

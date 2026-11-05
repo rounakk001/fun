@@ -1,8 +1,9 @@
-import { useState, useRef, useId } from 'react';
+import { useState, useRef, useId, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Header from '../../components/Header/Header';
 import Sidebar from '../../components/Sidebar/Sidebar';
 import { uploadVideo } from '../../api/video.api';
+import { useAuth } from '../../context/AuthContext';
 import './Upload.css';
 
 /**
@@ -16,9 +17,22 @@ import './Upload.css';
 function Upload() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const isInitiallyPremium = new URLSearchParams(location.search).get('premium') === 'true';
   const isInitiallyShort = new URLSearchParams(location.search).get('short') === 'true';
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Strict check: Cannot upload to VIP Vault unless current user has unlocked the vault
+  useEffect(() => {
+    if (isInitiallyPremium) {
+      const isUnlocked = user?._id
+        ? sessionStorage.getItem(`yeonix_premium_unlocked_${user._id}`) === 'true'
+        : false;
+      if (!isUnlocked) {
+        navigate('/premium', { replace: true });
+      }
+    }
+  }, [isInitiallyPremium, user?._id, navigate]);
 
   // ── Form state ────────────────────────────────────────────────
   const [title, setTitle] = useState('');

@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import { ApiError } from "../utils/ApiError.js";
 import { Video } from "../models/video.model.js";
 import { mlClient } from "../utils/mlClient.js";
 
@@ -189,6 +190,15 @@ export const getShortsFeed = asyncHandler(async (req, res) => {
   const userId = req.user?._id?.toString() || null;
   const isPremium = req.query.isPremium === "true" || req.query.isPremium === true;
   const currentShortId = req.query.currentShortId || null;
+
+  if (isPremium) {
+    if (!req.user) {
+      throw new ApiError(401, "Authentication required to access VIP Vault");
+    }
+    if (!req.user.isPremiumUnlocked) {
+      throw new ApiError(403, "VIP Vault is locked. Please enter the VIP passcode to unlock.");
+    }
+  }
 
   const premiumFilter = isPremium ? { isPremium: true } : { isPremium: { $ne: true } };
 

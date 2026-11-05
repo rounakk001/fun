@@ -83,6 +83,7 @@ export function AuthProvider({ children }) {
   // when both the original request and the refresh attempt return 401
   useEffect(() => {
     const handleSessionExpired = () => {
+      try { sessionStorage.clear(); } catch {}
       dispatch({ type: AUTH_ACTIONS.CLEAR_USER });
       navigate('/login', { replace: true });
     };
@@ -94,6 +95,7 @@ export function AuthProvider({ children }) {
   // ---------- Auth actions (exposed to consumers) ----------
 
   const login = useCallback(async (credentials) => {
+    try { sessionStorage.clear(); } catch {}
     const response = await authApi.loginUser(credentials);
     // Backend returns { data: { user, accessToken, refreshToken } }
     dispatch({ type: AUTH_ACTIONS.SET_USER, payload: response.data.data.user });
@@ -101,6 +103,7 @@ export function AuthProvider({ children }) {
   }, [navigate]);
 
   const register = useCallback(async (formData) => {
+    try { sessionStorage.clear(); } catch {}
     // register returns the created user — but does NOT set cookies (no auto-login)
     await authApi.registerUser(formData);
     // Redirect to login so user can sign in with their new credentials
@@ -108,6 +111,7 @@ export function AuthProvider({ children }) {
   }, [navigate]);
 
   const logout = useCallback(async () => {
+    try { sessionStorage.clear(); } catch {}
     try {
       await authApi.logoutUser();
     } catch {

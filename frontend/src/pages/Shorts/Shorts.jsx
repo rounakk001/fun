@@ -42,6 +42,18 @@ function Shorts() {
     toastTimeoutRef.current = setTimeout(() => setToastMessage(null), 2500);
   };
 
+  // Strict Vault Check: if accessing VIP Shorts, must be unlocked by current user
+  useEffect(() => {
+    if (isPremium) {
+      const isUnlocked = currentUser?._id
+        ? sessionStorage.getItem(`yeonix_premium_unlocked_${currentUser._id}`) === 'true'
+        : false;
+      if (!isUnlocked) {
+        navigate('/premium', { replace: true });
+      }
+    }
+  }, [isPremium, currentUser?._id, navigate]);
+
   // ── Fetch Initial Shorts Feed ──────────────────────────────────────
   const loadInitialShorts = useCallback(async () => {
     setIsLoading(true);
