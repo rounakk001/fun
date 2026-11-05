@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
-import Header from '../../components/Header/Header';
-import Sidebar from '../../components/Sidebar/Sidebar';
 import { getShortsFeed } from '../../api/recommendation.api';
-import { toggleVideoLike, toggleVideoDislike } from '../../api/like.api';
+import { toggleVideoLike } from '../../api/like.api';
 import { toggleSubscription } from '../../api/channel.api';
 import { useAuth } from '../../context/AuthContext';
 import CommentSection from '../../components/CommentSection/CommentSection';
@@ -23,7 +21,6 @@ function Shorts() {
 
   const isPremium = new URLSearchParams(location.search).get('premium') === 'true';
 
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [shorts, setShorts] = useState([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -31,6 +28,7 @@ function Shorts() {
   const [isMuted, setIsMuted] = useState(true);
   const [activeCommentShortId, setActiveCommentShortId] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
+  const [savedSet, setSavedSet] = useState(new Set());
 
   const containerRef = useRef(null);
   const toastTimeoutRef = useRef(null);
@@ -113,7 +111,6 @@ function Shorts() {
 
       if (newIndex !== activeIndex && newIndex >= 0 && newIndex < shorts.length) {
         setActiveIndex(newIndex);
-        // Pre-fetch more relatable shorts using ML when nearing the end
         if (newIndex >= shorts.length - 2 && shorts[newIndex]?._id) {
           loadMoreRelatableShorts(shorts[newIndex]._id);
         }
@@ -124,10 +121,10 @@ function Shorts() {
     return () => container.removeEventListener('scroll', handleScroll);
   }, [activeIndex, shorts, loadMoreRelatableShorts]);
 
-  // ── Keyboard Navigation (ArrowUp / ArrowDown) ──────────────────────
+  // ── Keyboard Navigation (ArrowUp / ArrowDown / m) ──────────────────
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (activeCommentShortId) return; // Typing in comments
+      if (activeCommentShortId) return;
 
       if (e.key === 'ArrowDown' || e.key === 'j') {
         e.preventDefault();
@@ -162,7 +159,7 @@ function Shorts() {
 
     try {
       const res = await toggleVideoLike(videoId);
-      const { isLiked, isDisliked } = res.data.data;
+      const { isLiked } = res.data.data;
 
       setShorts((prev) =>
         prev.map((s) => {
@@ -171,40 +168,12 @@ function Shorts() {
           return {
             ...s,
             isLiked,
-            isDisliked,
             likesCount: Math.max(0, (s.likesCount || 0) + delta)
           };
         })
       );
     } catch (err) {
       console.error('Like toggle failed', err);
-    }
-  };
-
-  const handleDislike = async (videoId) => {
-    if (!isAuthenticated) {
-      navigate('/login');
-      return;
-    }
-
-    try {
-      const res = await toggleVideoDislike(videoId);
-      const { isLiked, isDisliked } = res.data.data;
-
-      setShorts((prev) =>
-        prev.map((s) => {
-          if (s._id !== videoId) return s;
-          const delta = s.isLiked && !isLiked ? -1 : 0;
-          return {
-            ...s,
-            isLiked,
-            isDisliked,
-            likesCount: Math.max(0, (s.likesCount || 0) + delta)
-          };
-        })
-      );
-    } catch (err) {
-      console.error('Dislike toggle failed', err);
     }
   };
 
@@ -226,192 +195,224 @@ function Shorts() {
           return s;
         })
       );
-      showToast(isSubscribed ? 'Subscribed to creator!' : 'Unsubscribed');
+      showToast(isSubscribed ? 'Following creator' : 'Unfollowed');
     } catch (err) {
       console.error('Subscribe toggle failed', err);
     }
   };
 
+  const handleBookmark = (videoId) => {
+    setSavedSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(videoId)) {
+        next.delete(videoId);
+        showToast('Removed from saved');
+      } else {
+        next.add(videoId);
+        showToast('Saved to collection');
+      }
+      return next;
+    });
+  };
+
   const handleShare = (short) => {
-    const url = `${window.location.origin}/watch/${short._id}`;
+    const url = `${window.location.origin}/shorts?id=${short._id}`;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(url);
-      showToast('Reel link copied to clipboard! 📋');
+      showToast('Link copied to clipboard');
     } else {
       showToast(`Share URL: ${url}`);
     }
   };
 
   return (
-    <div className={`shorts-page-root ${isPremium ? 'shorts-page-root--vip' : ''}`}>
-      <Header onMenuToggle={() => setSidebarOpen((prev) => !prev)} />
+    <div className="ig-reels-root">
+      {/* ── Left Slim Navigation Rail (Instagram Web Style) ── */}
+      <aside className="ig-nav-rail" aria-label="Main navigation">
+        <div className="ig-nav-top">
+          <Link to="/home" className="ig-nav-logo" title="Yeonix">
+            <span className="ig-logo-letter">Y</span>
+          </Link>
 
-      <div className="shorts-page-layout">
-        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+          <nav className="ig-nav-items">
+            <Link to="/home" className="ig-nav-btn" title="Home">
+              <HomeIcon />
+            </Link>
 
-        <main className="shorts-page-main">
-          {/* ── Top Bar with Modes & Upload Short Button ───────── */}
-          <div className="shorts-top-bar">
-            <div className="shorts-top-bar__left">
-              <span className="shorts-badge-icon">{isPremium ? '👑' : '▶'}</span>
-              <h1 className="shorts-top-title">
-                {isPremium ? 'Yeonix VIP Shorts Lounge' : 'Yeonix Shorts'}
-              </h1>
+            <Link to="/search" className="ig-nav-btn" title="Search">
+              <SearchIcon />
+            </Link>
+
+            <Link
+              to="/shorts"
+              className={`ig-nav-btn ${!isPremium ? 'ig-nav-btn--active' : ''}`}
+              title="Reels"
+            >
+              <ReelsIcon />
+            </Link>
+
+            <Link
+              to="/shorts?premium=true"
+              className={`ig-nav-btn ig-nav-btn--vip ${isPremium ? 'ig-nav-btn--vip-active' : ''}`}
+              title="VIP Vault Reels"
+            >
+              <CrownIcon />
+            </Link>
+
+            <Link
+              to={isPremium ? '/upload?premium=true&short=true' : '/upload?short=true'}
+              className="ig-nav-btn"
+              title="Create Short"
+            >
+              <CreateIcon />
+            </Link>
+
+            <Link
+              to={currentUser?.username ? `/channel/${currentUser.username}` : '/login'}
+              className="ig-nav-btn ig-nav-avatar-btn"
+              title="Profile"
+            >
+              {currentUser?.avatar ? (
+                <img src={currentUser.avatar} alt="Profile" className="ig-nav-avatar" />
+              ) : (
+                <span className="ig-nav-avatar-placeholder">
+                  {currentUser?.fullName?.[0]?.toUpperCase() || '?'}
+                </span>
+              )}
+            </Link>
+          </nav>
+        </div>
+
+        <div className="ig-nav-bottom">
+          <Link to="/home" className="ig-nav-btn" title="More">
+            <MenuIcon />
+          </Link>
+        </div>
+      </aside>
+
+      {/* ── Main Reel Stream (Centered Instagram Layout) ── */}
+      <main className="ig-reels-main">
+        {toastMessage && (
+          <div className="ig-toast" role="status">
+            {toastMessage}
+          </div>
+        )}
+
+        {isLoading ? (
+          <div className="ig-loading-screen">
+            <div className="ig-reel-skeleton" />
+          </div>
+        ) : shorts.length === 0 ? (
+          <div className="ig-empty-screen">
+            <span className="ig-empty-icon">{isPremium ? '👑' : '🎬'}</span>
+            <h2>{isPremium ? 'No VIP Reels Yet' : 'No Reels Yet'}</h2>
+            <p>
+              {isPremium
+                ? 'Exclusive releases published to the VIP Vault will appear here.'
+                : 'Share your first vertical short clip with the community!'}
+            </p>
+            <Link
+              to={isPremium ? '/upload?premium=true&short=true' : '/upload?short=true'}
+              className="ig-empty-btn"
+            >
+              Upload Reel
+            </Link>
+          </div>
+        ) : (
+          <div className="ig-stage-container">
+            {/* Scroll-Snap Vertical Reels Container */}
+            <div className="ig-reels-viewport" ref={containerRef}>
+              {shorts.map((short, idx) => (
+                <InstagramReelCard
+                  key={short._id}
+                  short={short}
+                  isActive={idx === activeIndex}
+                  isMuted={isMuted}
+                  isSaved={savedSet.has(short._id)}
+                  onToggleMute={() => setIsMuted((p) => !p)}
+                  onLike={() => handleLike(short._id)}
+                  onSubscribe={() => handleSubscribe(short.owner?._id)}
+                  onBookmark={() => handleBookmark(short._id)}
+                  onShare={() => handleShare(short)}
+                  onOpenComments={() => setActiveCommentShortId(short._id)}
+                  currentUser={currentUser}
+                />
+              ))}
             </div>
 
-            <div className="shorts-top-bar__actions">
-              {/* Switch between Free and VIP Shorts */}
+            {/* Far Right Instagram Up/Down Chevrons */}
+            <div className="ig-floating-chevrons">
               <button
-                className={`shorts-mode-pill ${!isPremium ? 'shorts-mode-pill--active' : ''}`}
-                onClick={() => navigate('/shorts')}
+                className="ig-chevron-btn"
+                onClick={() => scrollToIndex(activeIndex - 1)}
+                disabled={activeIndex === 0}
+                aria-label="Previous reel"
+                title="Previous"
               >
-                <span>▶</span> Free Shorts
+                <ChevronUpIcon />
               </button>
-
               <button
-                className={`shorts-mode-pill shorts-mode-pill--vip ${isPremium ? 'shorts-mode-pill--vip-active' : ''}`}
-                onClick={() => navigate('/shorts?premium=true')}
+                className="ig-chevron-btn"
+                onClick={() => scrollToIndex(activeIndex + 1)}
+                disabled={activeIndex >= shorts.length - 1}
+                aria-label="Next reel"
+                title="Next"
               >
-                <span>👑</span> VIP Vault Shorts
+                <ChevronDownIcon />
               </button>
-
-              {/* Upload Short dedicated CTA */}
-              <Link
-                to={isPremium ? '/upload?premium=true&short=true' : '/upload?short=true'}
-                className="btn-shorts-upload"
-              >
-                <span>+</span> Upload Short
-              </Link>
             </div>
           </div>
+        )}
 
-          {/* ── Toast Notification ─────────────────────────────── */}
-          {toastMessage && (
-            <div className="shorts-toast" role="status">
-              <span>✦</span> {toastMessage}
-            </div>
-          )}
-
-          {/* ── Reels Container ─────────────────────────────────── */}
-          {isLoading ? (
-            <div className="shorts-loading-screen">
-              <div className="shorts-reel-skeleton" />
-            </div>
-          ) : shorts.length === 0 ? (
-            <div className="shorts-empty-screen">
-              <span className="shorts-empty-icon">{isPremium ? '👑▶' : '🎬'}</span>
-              <h2>{isPremium ? 'No VIP Shorts in Vault' : 'No Shorts Available Yet'}</h2>
-              <p>
-                {isPremium
-                  ? 'Exclusive VIP shorts published by creators will appear right here.'
-                  : 'Be the first creator to share quick, vertical short clips!'}
-              </p>
-              <Link
-                to={isPremium ? '/upload?premium=true&short=true' : '/upload?short=true'}
-                className="btn-shorts-upload btn-shorts-upload--lg"
-              >
-                <span>+</span> Upload First Short
-              </Link>
-            </div>
-          ) : (
-            <div className="shorts-player-container">
-              {/* Floating Vertical Next/Prev Chevrons (Instagram / YouTube Style) */}
-              <div className="shorts-floating-nav">
+        {/* ── Sliding Comments Drawer ── */}
+        {activeCommentShortId && (
+          <div className="ig-comments-overlay" onClick={() => setActiveCommentShortId(null)}>
+            <div className="ig-comments-panel" onClick={(e) => e.stopPropagation()}>
+              <div className="ig-comments-header">
+                <h3>Comments</h3>
                 <button
-                  className="shorts-nav-arrow"
-                  onClick={() => scrollToIndex(activeIndex - 1)}
-                  disabled={activeIndex === 0}
-                  aria-label="Previous short"
-                  title="Previous short (Arrow Up)"
+                  className="ig-close-btn"
+                  onClick={() => setActiveCommentShortId(null)}
+                  aria-label="Close comments"
                 >
-                  <ChevronUpIcon />
-                </button>
-                <button
-                  className="shorts-nav-arrow"
-                  onClick={() => scrollToIndex(activeIndex + 1)}
-                  disabled={activeIndex >= shorts.length - 1}
-                  aria-label="Next short"
-                  title="Next short (Arrow Down)"
-                >
-                  <ChevronDownIcon />
+                  ✕
                 </button>
               </div>
-
-              {/* Scroll-Snap Vertical Feed */}
-              <div className="shorts-feed-viewport" ref={containerRef}>
-                {shorts.map((short, idx) => (
-                  <ReelCard
-                    key={short._id}
-                    short={short}
-                    isActive={idx === activeIndex}
-                    isMuted={isMuted}
-                    onToggleMute={() => setIsMuted((p) => !p)}
-                    onLike={() => handleLike(short._id)}
-                    onDislike={() => handleDislike(short._id)}
-                    onSubscribe={() => handleSubscribe(short.owner?._id)}
-                    onShare={() => handleShare(short)}
-                    onOpenComments={() => setActiveCommentShortId(short._id)}
-                    currentUser={currentUser}
-                  />
-                ))}
+              <div className="ig-comments-body">
+                <CommentSection
+                  videoId={activeCommentShortId}
+                  videoOwnerId={
+                    shorts.find((s) => s._id === activeCommentShortId)?.owner?._id
+                  }
+                />
               </div>
             </div>
-          )}
-
-          {/* ── Slide-up Comments Drawer ───────────────────────── */}
-          {activeCommentShortId && (
-            <div className="shorts-comments-overlay" onClick={() => setActiveCommentShortId(null)}>
-              <div
-                className="shorts-comments-drawer"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="shorts-comments-header">
-                  <h3>Comments</h3>
-                  <button
-                    className="btn-close-comments"
-                    onClick={() => setActiveCommentShortId(null)}
-                    aria-label="Close comments"
-                  >
-                    ✕
-                  </button>
-                </div>
-                <div className="shorts-comments-body">
-                  <CommentSection
-                    videoId={activeCommentShortId}
-                    videoOwnerId={
-                      shorts.find((s) => s._id === activeCommentShortId)?.owner?._id
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-        </main>
-      </div>
+          </div>
+        )}
+      </main>
     </div>
   );
 }
 
 /**
- * ReelCard — A single 9:16 vertical short reel with overlay and floating actions
+ * InstagramReelCard — Exact Instagram Reels Card
  */
-function ReelCard({
+function InstagramReelCard({
   short,
   isActive,
   isMuted,
+  isSaved,
   onToggleMute,
   onLike,
-  onDislike,
   onSubscribe,
+  onBookmark,
   onShare,
   onOpenComments,
   currentUser
 }) {
   const videoRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(true);
-  const [progress, setProgress] = useState(0);
 
-  // Auto-play/pause when this reel becomes active/inactive
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -441,213 +442,275 @@ function ReelCard({
     }
   };
 
-  const handleTimeUpdate = () => {
-    const video = videoRef.current;
-    if (!video || !video.duration) return;
-    setProgress((video.currentTime / video.duration) * 100);
-  };
-
   const owner = short.owner || {};
-  const ownerName = owner.fullName || owner.username || 'Creator';
+  const ownerName = owner.username || owner.fullName || 'creator';
   const isOwner = currentUser?._id && owner._id && currentUser._id === owner._id;
 
   return (
-    <div className={`shorts-reel-item ${isActive ? 'shorts-reel-item--active' : ''}`}>
-      <div className="shorts-video-wrapper">
+    <div className={`ig-reel-row ${isActive ? 'ig-reel-row--active' : ''}`}>
+      {/* 9:16 Video Player Container */}
+      <div className="ig-video-frame">
         <video
           ref={videoRef}
           src={short.videoFile}
-          className="shorts-video-element"
+          className="ig-video-player"
           loop
           playsInline
           muted={isMuted}
           onClick={handleVideoClick}
-          onTimeUpdate={handleTimeUpdate}
           poster={short.thumbnail}
         />
 
-        {/* Play/Pause Center Indicator */}
+        {/* Center Pause/Play Indicator */}
         {!isPlaying && (
-          <div className="shorts-play-indicator" onClick={handleVideoClick}>
+          <div className="ig-play-flash" onClick={handleVideoClick}>
             <span>▶</span>
           </div>
         )}
 
-        {/* Video Progress Bar at bottom */}
-        <div className="shorts-video-progress-bar">
-          <div className="shorts-video-progress-fill" style={{ width: `${progress}%` }} />
-        </div>
-
-        {/* Bottom Left: Creator & Caption Overlay */}
-        <div className="shorts-info-overlay">
-          <div className="shorts-creator-row">
-            <Link to={`/channel/${owner.username}`} className="shorts-creator-avatar-link">
+        {/* Bottom Left Overlay on Video */}
+        <div className="ig-video-overlay">
+          <div className="ig-creator-line">
+            <Link to={`/channel/${owner.username}`} className="ig-avatar-link">
               {owner.avatar ? (
-                <img src={owner.avatar} alt={ownerName} className="shorts-creator-avatar" />
+                <img src={owner.avatar} alt={ownerName} className="ig-creator-avatar" />
               ) : (
-                <span className="shorts-creator-avatar-fallback">
-                  {ownerName[0]?.toUpperCase() || '?'}
-                </span>
+                <span className="ig-creator-avatar-fb">{ownerName[0]?.toUpperCase() || '?'}</span>
               )}
             </Link>
 
-            <Link to={`/channel/${owner.username}`} className="shorts-creator-handle">
-              @{owner.username || 'creator'}
+            <Link to={`/channel/${owner.username}`} className="ig-creator-username">
+              {owner.username || 'user'}
             </Link>
 
             {!isOwner && (
-              <button
-                className={`shorts-btn-follow ${short.isSubscribed ? 'shorts-btn-follow--active' : ''}`}
-                onClick={onSubscribe}
-              >
-                {short.isSubscribed ? 'Subscribed' : 'Follow'}
-              </button>
+              <>
+                <span className="ig-dot-separator">•</span>
+                <button
+                  className={`ig-follow-btn ${short.isSubscribed ? 'ig-follow-btn--active' : ''}`}
+                  onClick={onSubscribe}
+                >
+                  {short.isSubscribed ? 'Following' : 'Follow'}
+                </button>
+              </>
+            )}
+
+            {short.isPremium && (
+              <span className="ig-vip-badge">👑 VIP</span>
             )}
           </div>
 
-          <p className="shorts-caption-title">{short.title}</p>
+          <p className="ig-caption-text">{short.title}</p>
           {short.description && (
-            <p className="shorts-caption-desc">{short.description}</p>
+            <p className="ig-caption-sub">{short.description}</p>
           )}
 
-          {short.isPremium && (
-            <div className="shorts-vip-tag">
-              <span>👑 VIP Vault Exclusive</span>
-            </div>
-          )}
+          <div className="ig-audio-row">
+            <span className="ig-music-icon">♫</span>
+            <span className="ig-audio-name">Original audio - {ownerName}</span>
+          </div>
         </div>
 
-        {/* Bottom Right Sound Toggle */}
+        {/* Bottom Right Mute Button */}
         <button
-          className="shorts-sound-btn"
+          className="ig-sound-btn"
           onClick={onToggleMute}
           aria-label={isMuted ? 'Unmute' : 'Mute'}
-          title={isMuted ? 'Unmute sound (m)' : 'Mute sound (m)'}
+          title={isMuted ? 'Unmute' : 'Mute'}
         >
           {isMuted ? <MutedIcon /> : <UnmutedIcon />}
         </button>
       </div>
 
-      {/* Floating Right Actions Stack (Like, Dislike, Comment, Share, More) */}
-      <div className="shorts-actions-stack">
+      {/* Right Side Bare Action Stack (No Background Circles - Just Like Instagram) */}
+      <div className="ig-actions-column">
         {/* Like */}
         <button
-          className={`shorts-action-btn ${short.isLiked ? 'shorts-action-btn--liked' : ''}`}
+          className={`ig-action-item ${short.isLiked ? 'ig-action-item--liked' : ''}`}
           onClick={onLike}
-          aria-label="Like this short"
+          aria-label="Like"
         >
-          <span className="shorts-action-icon">
+          <span className="ig-action-svg">
             <HeartIcon filled={short.isLiked} />
           </span>
-          <span className="shorts-action-count">{formatCount(short.likesCount || 0)}</span>
-        </button>
-
-        {/* Dislike */}
-        <button
-          className={`shorts-action-btn ${short.isDisliked ? 'shorts-action-btn--disliked' : ''}`}
-          onClick={onDislike}
-          aria-label="Dislike this short"
-        >
-          <span className="shorts-action-icon">
-            <DislikeIcon filled={short.isDisliked} />
-          </span>
-          <span className="shorts-action-count">Dislike</span>
+          <span className="ig-action-text">{formatCount(short.likesCount || 0)}</span>
         </button>
 
         {/* Comments */}
         <button
-          className="shorts-action-btn"
+          className="ig-action-item"
           onClick={onOpenComments}
-          aria-label="View comments"
+          aria-label="Comment"
         >
-          <span className="shorts-action-icon">
-            <CommentIcon />
+          <span className="ig-action-svg">
+            <CommentBubbleIcon />
           </span>
-          <span className="shorts-action-count">{formatCount(short.commentsCount || 0)}</span>
+          <span className="ig-action-text">{formatCount(short.commentsCount || 0)}</span>
         </button>
 
         {/* Share */}
         <button
-          className="shorts-action-btn"
+          className="ig-action-item"
           onClick={onShare}
-          aria-label="Share short"
+          aria-label="Share"
         >
-          <span className="shorts-action-icon">
-            <ShareIcon />
+          <span className="ig-action-svg">
+            <PaperPlaneIcon />
           </span>
-          <span className="shorts-action-count">Share</span>
+          <span className="ig-action-text">Share</span>
         </button>
 
-        {/* Creator Channel shortcut */}
-        <Link
-          to={`/channel/${owner.username}`}
-          className="shorts-action-btn shorts-action-btn--channel"
-          aria-label="Visit creator channel"
+        {/* Bookmark / Save */}
+        <button
+          className={`ig-action-item ${isSaved ? 'ig-action-item--saved' : ''}`}
+          onClick={onBookmark}
+          aria-label="Save"
         >
-          <span className="shorts-action-icon">
-            <ChannelIcon />
+          <span className="ig-action-svg">
+            <BookmarkIcon filled={isSaved} />
           </span>
-          <span className="shorts-action-count">Channel</span>
-        </Link>
+        </button>
+
+        {/* More Options */}
+        <button
+          className="ig-action-item"
+          onClick={onShare}
+          aria-label="More options"
+        >
+          <span className="ig-action-svg">
+            <ThreeDotsIcon />
+          </span>
+        </button>
+
+        {/* Bottom Audio Thumbnail Square */}
+        <div className="ig-audio-thumb" title="Audio">
+          {owner.avatar ? (
+            <img src={owner.avatar} alt="" className="ig-audio-img" />
+          ) : (
+            <span className="ig-audio-img-fb">♫</span>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-/* ── Inline SVG Icons matching Instagram / YouTube Shorts ───────────── */
+/* ── Precise Instagram SVGs ─────────────────────────────────────────── */
+
+function HomeIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <polyline points="9 22 9 12 15 12 15 22" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
+
+function ReelsIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="2" width="20" height="20" rx="4" />
+      <line x1="7" y1="2" x2="7" y2="22" />
+      <line x1="17" y1="2" x2="17" y2="22" />
+      <line x1="2" y1="12" x2="22" y2="12" />
+      <line x1="2" y1="7" x2="7" y2="7" />
+      <line x1="2" y1="17" x2="7" y2="17" />
+      <line x1="17" y1="17" x2="22" y2="17" />
+      <line x1="17" y1="7" x2="22" y2="7" />
+    </svg>
+  );
+}
+
+function CrownIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f5c518" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14v2H5v-2z" />
+    </svg>
+  );
+}
+
+function CreateIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="4" />
+      <line x1="12" y1="8" x2="12" y2="16" />
+      <line x1="8" y1="12" x2="16" y2="12" />
+    </svg>
+  );
+}
+
+function MenuIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="3" y1="12" x2="21" y2="12" />
+      <line x1="3" y1="6" x2="21" y2="6" />
+      <line x1="3" y1="18" x2="21" y2="18" />
+    </svg>
+  );
+}
 
 function HeartIcon({ filled }) {
   if (filled) {
     return (
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="#ff4444" stroke="#ff4444" strokeWidth="1.5">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="#ff3040" stroke="#ff3040" strokeWidth="1">
         <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
       </svg>
     );
   }
   return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
     </svg>
   );
 }
 
-function DislikeIcon({ filled }) {
+function CommentBubbleIcon() {
   return (
-    <svg width="26" height="26" viewBox="0 0 24 24" fill={filled ? '#888' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20.656 17.008a9.993 9.993 0 1 0-3.59 3.615L22 22z" />
     </svg>
   );
 }
 
-function CommentIcon() {
+function PaperPlaneIcon() {
   return (
-    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-    </svg>
-  );
-}
-
-function ShareIcon() {
-  return (
-    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="22" y1="2" x2="11" y2="13" />
       <polygon points="22 2 15 22 11 13 2 9 22 2" />
     </svg>
   );
 }
 
-function ChannelIcon() {
+function BookmarkIcon({ filled }) {
   return (
-    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-      <circle cx="12" cy="7" r="4" />
+    <svg width="24" height="24" viewBox="0 0 24 24" fill={filled ? '#fff' : 'none'} stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+function ThreeDotsIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff">
+      <circle cx="12" cy="12" r="1.75" />
+      <circle cx="6" cy="12" r="1.75" />
+      <circle cx="18" cy="12" r="1.75" />
     </svg>
   );
 }
 
 function MutedIcon() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="1" y1="1" x2="23" y2="23" />
       <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
       <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
@@ -659,7 +722,7 @@ function MutedIcon() {
 
 function UnmutedIcon() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
       <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
     </svg>
@@ -668,7 +731,7 @@ function UnmutedIcon() {
 
 function ChevronUpIcon() {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="18 15 12 9 6 15" />
     </svg>
   );
@@ -676,7 +739,7 @@ function ChevronUpIcon() {
 
 function ChevronDownIcon() {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="6 9 12 15 18 9" />
     </svg>
   );
