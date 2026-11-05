@@ -537,7 +537,7 @@ function Watch() {
                       title="VIP Vault exclusive video"
                       aria-label="VIP Vault exclusive"
                     >
-                      👑 VIP Vault
+                      VAULT
                     </span>
                   )}
                   {video.isShort && (
@@ -632,8 +632,8 @@ function Watch() {
                         onClick={() => setShowMoveToPremiumModal(true)}
                         title="Move this video to the VIP Vault (Owner only)"
                       >
-                        <CrownIcon />
-                        <span>Move to VIP</span>
+                        <VaultLockIcon />
+                        <span>Move to Vault</span>
                       </button>
                     )}
                   </div>
@@ -766,7 +766,7 @@ function Watch() {
           onClose={() => setShowMoveToPremiumModal(false)}
           onSuccess={(updated) => {
             setVideo((prev) => ({ ...prev, isPremium: true }));
-            showToast('Video successfully moved to VIP Vault! 👑');
+            showToast('Video moved to Vault successfully.');
           }}
         />
       )}
@@ -885,10 +885,12 @@ function ChevronIcon({ expanded }) {
   );
 }
 
-function CrownIcon() {
+function VaultLockIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f5c518" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14v2H5v-2z" fill="rgba(245, 197, 24, 0.2)" />
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+      <circle cx="12" cy="16" r="1" fill="currentColor" />
     </svg>
   );
 }

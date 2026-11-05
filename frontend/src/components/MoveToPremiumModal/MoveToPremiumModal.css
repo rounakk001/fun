@@ -51,8 +51,12 @@
   gap: 0.6rem;
 }
 
-.mv-modal-crown {
-  font-size: 1.35rem;
+.mv-modal-lock-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #d4af37;
+  flex-shrink: 0;
 }
 
 .mv-modal-title {

@@ -74,9 +74,15 @@ function MoveToPremiumModal({ isOpen, onClose, video, onSuccess }) {
       >
         <div className="mv-modal-header">
           <div className="mv-modal-title-row">
-            <span className="mv-modal-crown">👑</span>
+            <span className="mv-modal-lock-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                <circle cx="12" cy="16" r="1" fill="currentColor" />
+              </svg>
+            </span>
             <h2 id="mv-modal-title" className="mv-modal-title">
-              Move to VIP Vault
+              Move to Vault
             </h2>
           </div>
           <button
@@ -169,7 +175,7 @@ function MoveToPremiumModal({ isOpen, onClose, video, onSuccess }) {
                   Moving to Vault…
                 </>
               ) : (
-                'Lock in VIP Vault 👑'
+                'Lock in Vault'
               )}
             </button>
           </div>

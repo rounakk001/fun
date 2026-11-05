@@ -194,7 +194,7 @@ function Upload() {
             {/* ── Page heading ─────────────────────────────── */}
             <div className="upload-heading">
               <h1 className="upload-heading__title">
-                {isPremium ? (isShort ? '👑 Upload VIP Short' : '👑 Upload to VIP Vault') : (isShort ? '▶ Upload a Short' : 'Upload a Video')}
+                {isPremium ? (isShort ? 'Upload Vault Short' : 'Upload to Vault') : (isShort ? 'Upload a Short' : 'Upload a Video')}
               </h1>
               <p className="upload-heading__sub">
                 {isPremium
@@ -220,7 +220,7 @@ function Upload() {
                   onClick={() => setUploadType('video')}
                   disabled={isUploading}
                 >
-                  <span className="upload-type-btn__icon">{isPremium ? '👑' : '🎬'}</span>
+                  <span className="upload-type-btn__icon">{isPremium ? '🔒' : '🎬'}</span>
                   <div className="upload-type-btn__text">
                     <span className="upload-type-btn__label">{isPremium ? 'VIP Video' : 'Regular Video'}</span>
                     <span className="upload-type-btn__hint">16:9 Landscape</span>
@@ -233,7 +233,7 @@ function Upload() {
                   onClick={() => setUploadType('short')}
                   disabled={isUploading}
                 >
-                  <span className="upload-type-btn__icon">{isPremium ? '👑▶' : '▶'}</span>
+                  <span className="upload-type-btn__icon">{isPremium ? '🔒▶' : '▶'}</span>
                   <div className="upload-type-btn__text">
                     <span className="upload-type-btn__label">{isPremium ? 'VIP Short' : 'Short Clip'}</span>
                     <span className="upload-type-btn__hint">9:16 Vertical</span>
@@ -445,7 +445,7 @@ function Upload() {
                   gap: '1rem',
                   boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
                 }}>
-                  <span style={{ fontSize: '1.5rem' }}>👑</span>
+                  <span style={{ fontSize: '1.5rem' }}>🔒</span>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 700, color: '#f5c518', fontSize: '0.98rem', letterSpacing: '0.02em' }}>
                       Publishing to VIP Vault
@@ -495,7 +495,7 @@ function Upload() {
                   gap: '1rem',
                   boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
                 }}>
-                  <span style={{ fontSize: '1.5rem' }}>👑▶</span>
+                  <span style={{ fontSize: '1.5rem' }}>🔒▶</span>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 700, color: '#f5c518', fontSize: '0.98rem', letterSpacing: '0.02em' }}>
                       Publishing VIP Short to Vault

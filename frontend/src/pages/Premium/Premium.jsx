@@ -147,9 +147,9 @@ function Premium() {
             <div className="premium-lock-wrapper">
               <div className="premium-lock-card">
                 <div className="premium-lock__icon-wrap">
-                  <span>👑</span>
+                  <LockSVG />
                 </div>
-                <h1 className="premium-lock__title">Yeonix VIP Vault</h1>
+                <h1 className="premium-lock__title">Private Vault</h1>
                 <p className="premium-lock__desc">
                   Private release vault for members. Enter your secret VIP passcode to unlock.
                 </p>
@@ -159,7 +159,7 @@ function Premium() {
                     <input
                       type="password"
                       className="premium-input"
-                      placeholder="ENTER VIP PASSCODE"
+                      placeholder="Enter access code"
                       value={code}
                       onChange={(e) => {
                         setCode(e.target.value);
@@ -176,7 +176,7 @@ function Premium() {
                   )}
 
                   <button type="submit" className="btn-unlock" disabled={isSubmitting}>
-                    {isSubmitting ? 'Authenticating...' : 'Unlock VIP Vault ✦'}
+                    {isSubmitting ? 'Authenticating...' : 'Unlock Vault'}
                   </button>
                 </form>
               </div>
@@ -188,9 +188,9 @@ function Premium() {
               <div className="premium-hero">
                 <div className="premium-hero__text">
                   <div className="premium-hero__badge">
-                    <span>👑</span> VIP Vault Unlocked
+                    <span className="premium-hero__badge-dot" /> Vault Active
                   </div>
-                  <h1 className="premium-hero__title">Exclusive VIP Lounge</h1>
+                  <h1 className="premium-hero__title">Private Vault</h1>
                   <p className="premium-hero__subtitle">
                     Strictly isolated creator sanctuary. Premium videos and shorts published here will never appear in the public home feed.
                   </p>
@@ -199,23 +199,27 @@ function Premium() {
                 {/* Explicit Separate Upload Actions */}
                 <div className="premium-hero__action-bar">
                   <Link to="/upload?premium=true" className="btn-vault-action btn-vault-action--video">
-                    <span className="btn-vault-action__icon">🎬</span>
+                    <span className="btn-vault-action__icon">
+                      <UploadSVG />
+                    </span>
                     <span className="btn-vault-action__text">
-                      <span className="btn-vault-action__title">Upload VIP Video</span>
-                      <span className="btn-vault-action__sub">Standard 16:9 format</span>
+                      <span className="btn-vault-action__title">Upload Video</span>
+                      <span className="btn-vault-action__sub">16:9 landscape</span>
                     </span>
                   </Link>
 
                   <Link to="/upload?premium=true&short=true" className="btn-vault-action btn-vault-action--short">
-                    <span className="btn-vault-action__icon">▶</span>
+                    <span className="btn-vault-action__icon">
+                      <ShortSVG />
+                    </span>
                     <span className="btn-vault-action__text">
-                      <span className="btn-vault-action__title">Upload VIP Short</span>
-                      <span className="btn-vault-action__sub">Vertical 9:16 clip</span>
+                      <span className="btn-vault-action__title">Upload Short</span>
+                      <span className="btn-vault-action__sub">9:16 vertical</span>
                     </span>
                   </Link>
 
-                  <button onClick={handleLock} className="btn-vault-lock" title="Lock the VIP vault">
-                    🔒 Lock Vault
+                  <button onClick={handleLock} className="btn-vault-lock" title="Lock the vault">
+                    <LockSVG size={14} /> Lock Vault
                   </button>
                 </div>
               </div>
@@ -227,20 +231,20 @@ function Premium() {
                     className={`premium-pill-btn ${activeTab === 'videos' ? 'premium-pill-btn--active' : ''}`}
                     onClick={() => handleTabChange('videos')}
                   >
-                    <span className="pill-icon">🎬</span>
-                    <span>Exclusive Videos</span>
+                    <span className="pill-icon"><VideoSVG /></span>
+                    <span>Videos</span>
                   </button>
                   <button
                     className={`premium-pill-btn ${activeTab === 'shorts' ? 'premium-pill-btn--active' : ''}`}
                     onClick={() => handleTabChange('shorts')}
                   >
-                    <span className="pill-icon">▶</span>
-                    <span>VIP Shorts</span>
+                    <span className="pill-icon"><PlaySVG /></span>
+                    <span>Shorts</span>
                   </button>
                 </div>
 
                 <div className="premium-tab-label">
-                  {activeTab === 'videos' ? 'Showing Exclusive VIP Videos' : 'Showing Exclusive VIP Shorts'}
+                  {activeTab === 'videos' ? 'Vault Videos' : 'Vault Shorts'}
                 </div>
               </div>
 
@@ -266,11 +270,11 @@ function Premium() {
                     </div>
                   ) : videos.length === 0 ? (
                     <div className="premium-empty-box">
-                      <span className="empty-icon">👑▶</span>
-                      <h3>No VIP Shorts Yet</h3>
-                      <p>Publish vertical exclusive shorts strictly for VIP Vault members.</p>
+                      <span className="empty-icon"><LockSVG size={36} /></span>
+                      <h3>No Vault Shorts Yet</h3>
+                      <p>Publish vertical exclusive shorts to your Private Vault.</p>
                       <Link to="/upload?premium=true&short=true" className="btn-vault-action btn-vault-action--short">
-                        <span>▶</span> Upload First VIP Short
+                        <span><PlaySVG /></span> Upload First Vault Short
                       </Link>
                     </div>
                   ) : (
@@ -321,7 +325,7 @@ function PremiumShortCard({ short }) {
           className="premium-short-card__thumb"
           loading="lazy"
         />
-        <div className="premium-short-card__badge">👑 VIP</div>
+        <div className="premium-short-card__badge">VAULT</div>
         <span className="premium-short-card__play">▶</span>
         {short.duration && (
           <span className="premium-short-card__duration">{formatDuration(short.duration)}</span>
@@ -341,6 +345,51 @@ function PremiumShortCard({ short }) {
         </div>
       </div>
     </Link>
+  );
+}
+
+function LockSVG({ size = 22 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+      <circle cx="12" cy="16" r="1" fill="currentColor" />
+    </svg>
+  );
+}
+
+function UploadSVG() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+  );
+}
+
+function ShortSVG() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="5 3 19 12 5 21 5 3" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function VideoSVG() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="23 7 16 12 23 17 23 7" />
+      <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+    </svg>
+  );
+}
+
+function PlaySVG() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <polygon points="5 3 19 12 5 21 5 3" />
+    </svg>
   );
 }
 

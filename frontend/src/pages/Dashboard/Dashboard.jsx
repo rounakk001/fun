@@ -135,8 +135,8 @@ function Dashboard() {
                                 <img src={video.thumbnail} alt="" className="dashboard-table-thumb" />
                                 <span className="dashboard-table-vtitle">
                                   {video.isPremium && (
-                                    <span style={{ color: '#f5c518', marginRight: '6px', fontWeight: 'bold' }} title="VIP Vault Video">
-                                      👑 VIP
+                                    <span style={{ color: '#d4af37', marginRight: '6px', fontSize: '0.72rem', fontWeight: '700', background: 'rgba(212,175,55,0.1)', border: '1px solid rgba(212,175,55,0.3)', padding: '1px 6px', borderRadius: '4px', letterSpacing: '0.06em' }} title="Vault Video">
+                                      VAULT
                                     </span>
                                   )}
                                   {video.isShort && (
@@ -183,7 +183,7 @@ function Dashboard() {
                                     onClick={() => setMovingVideo(video)}
                                     title="Move this video to the VIP Vault"
                                   >
-                                    👑 Move to VIP
+                                    Move to Vault
                                   </button>
                                 ) : (
                                   <span
@@ -199,7 +199,7 @@ function Dashboard() {
                                     }}
                                     title="This video is inside the VIP Vault"
                                   >
-                                    👑 VIP Vault
+                                    In Vault
                                   </span>
                                 )}
                               </div>

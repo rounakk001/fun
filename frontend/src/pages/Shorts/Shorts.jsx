@@ -257,7 +257,7 @@ function Shorts() {
               className={`ig-nav-btn ig-nav-btn--vip ${isPremium ? 'ig-nav-btn--vip-active' : ''}`}
               title="VIP Vault Reels"
             >
-              <CrownIcon />
+              <VaultLockIcon />
             </Link>
 
             <Link
@@ -305,7 +305,7 @@ function Shorts() {
           </div>
         ) : shorts.length === 0 ? (
           <div className="ig-empty-screen">
-            <span className="ig-empty-icon">{isPremium ? '👑' : '🎬'}</span>
+            <span className="ig-empty-icon">{isPremium ? <VaultLockIcon size={40} /> : '🎬'}</span>
             <h2>{isPremium ? 'No VIP Reels Yet' : 'No Reels Yet'}</h2>
             <p>
               {isPremium
@@ -497,7 +497,7 @@ function InstagramReelCard({
             )}
 
             {short.isPremium && (
-              <span className="ig-vip-badge">👑 VIP</span>
+              <span className="ig-vip-badge">VAULT</span>
             )}
           </div>
 
@@ -631,10 +631,12 @@ function ReelsIcon() {
   );
 }
 
-function CrownIcon() {
+function VaultLockIcon({ size = 24 }) {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f5c518" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14v2H5v-2z" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+      <circle cx="12" cy="16" r="1" fill="currentColor" />
     </svg>
   );
 }
