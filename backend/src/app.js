@@ -1,4 +1,5 @@
 import "dotenv/config";
+import fs from "fs";
 import express from "express"
 import cors from "cors"
 import cookieParser from "cookie-parser"
@@ -20,7 +21,13 @@ app.use(cors({
 //use is used when configuring middleware
 app.use(express.json({limit: "16kb"})) 
 app.use(express.urlencoded({extended: true, limit: "16kb"}))
+// Static files
 app.use(express.static("public")) 
+const uploadsDir = process.env.UPLOAD_DIR || (process.platform !== "win32" && fs.existsSync("/home/ubuntu/yeonix-uploads") ? "/home/ubuntu/yeonix-uploads" : "./public/uploads");
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use("/uploads", express.static(uploadsDir))
 app.use(cookieParser())
 
 //importing routes

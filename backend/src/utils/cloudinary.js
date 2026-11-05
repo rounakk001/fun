@@ -1,101 +1,132 @@
-import {v2 as cloudinary} from "cloudinary"
-import fs from "fs"
+import fs from "fs";
+import path from "path";
+import { execFile } from "child_process";
+import { promisify } from "util";
 
+const execFilePromise = promisify(execFile);
 
-cloudinary.config({ 
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME, 
-  api_key: process.env.CLOUDINARY_API_KEY, 
-  api_secret: process.env.CLOUDINARY_API_SECRET 
-});
- 
+/**
+ * Detect media resource type from file extension
+ */
 const detectResourceType = (filePath) => {
     const ext = String(filePath).split(".").pop().toLowerCase();
     if (["mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v"].includes(ext)) {
-        return "video";
+        return "videos";
     }
     if (["jpg", "jpeg", "png", "webp", "gif", "svg", "bmp"].includes(ext)) {
-        return "image";
+        return "images";
     }
-    return "auto";
+    return "others";
 };
 
-const uploadLargePromise = (filePath, options) => {
-    return new Promise((resolve, reject) => {
-        cloudinary.uploader.upload_large(filePath, options, (error, result) => {
-            if (error) return reject(error);
-            resolve(result);
-        });
-    });
-};
-
-const uploadOnCloudinary = async (localFilePath) => {
+/**
+ * Extract video duration (in seconds) via ffprobe if available
+ */
+const getVideoDuration = async (filePath) => {
     try {
-        if (!localFilePath) return null
+        const { stdout } = await execFilePromise("ffprobe", [
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            filePath
+        ], { timeout: 15000 });
+        const dur = parseFloat(stdout.trim());
+        return isNaN(dur) ? 0 : Math.round(dur * 100) / 100;
+    } catch {
+        return 0;
+    }
+};
 
-        const fileStats = fs.existsSync(localFilePath) ? fs.statSync(localFilePath) : null;
-        const isLarge = fileStats && fileStats.size > 80 * 1024 * 1024; // > 80MB
-        const detectedType = detectResourceType(localFilePath);
+/**
+ * Base URL for public media delivery
+ */
+const getBaseUrl = () => {
+    if (process.env.PUBLIC_MEDIA_URL) {
+        return process.env.PUBLIC_MEDIA_URL.replace(/\/+$/, "");
+    }
+    if (process.env.NODE_ENV === "production" || fs.existsSync("/home/ubuntu/yeonix-uploads")) {
+        return "https://yeonix.duckdns.org/uploads";
+    }
+    const port = process.env.PORT || 8000;
+    return `http://localhost:${port}/uploads`;
+};
 
-        // Upload to Cloudinary (using chunked upload_large for files > 80MB)
-        let response;
-        if (isLarge) {
-            response = await uploadLargePromise(localFilePath, {
-                resource_type: detectedType === "auto" ? "video" : detectedType,
-                chunk_size: 6 * 1024 * 1024 // 6MB chunk size
-            });
-        } else {
-            response = await cloudinary.uploader.upload(localFilePath, {
-                resource_type: "auto"
-            });
+/**
+ * Storage root directory on local disk or EC2
+ */
+const getStorageDir = (subDir = "") => {
+    let baseDir = process.env.UPLOAD_DIR;
+    if (!baseDir) {
+        baseDir = fs.existsSync("/home/ubuntu/yeonix-uploads")
+            ? "/home/ubuntu/yeonix-uploads"
+            : "./public/uploads";
+    }
+    const fullPath = subDir ? path.join(baseDir, subDir) : baseDir;
+    if (!fs.existsSync(fullPath)) {
+        fs.mkdirSync(fullPath, { recursive: true });
+    }
+    return fullPath;
+};
+
+/**
+ * Upload & store media file permanently on self-hosted storage.
+ * Completely free, zero third-party bans, supports legal adult media,
+ * streams directly via Nginx byte-range requests.
+ *
+ * @param {string} localFilePath - Path of temp file uploaded by Multer
+ * @returns {Promise<{ url: string, duration: number } | null>}
+ */
+const uploadOnCloudinary = async (localFilePath) => {
+    if (!localFilePath || !fs.existsSync(localFilePath)) {
+        return null;
+    }
+
+    try {
+        const subDir = detectResourceType(localFilePath);
+        const targetDir = getStorageDir(subDir);
+
+        const originalName = path.basename(localFilePath);
+        const ext = path.extname(originalName) || "";
+        const cleanName = path.basename(originalName, ext).replace(/[^a-zA-Z0-9_-]/g, "_");
+        const uniqueFileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}-${cleanName}${ext}`;
+        const destPath = path.join(targetDir, uniqueFileName);
+
+        // Copy file to permanent storage
+        fs.copyFileSync(localFilePath, destPath);
+
+        // Extract video duration if it's a video file
+        let duration = 0;
+        if (subDir === "videos") {
+            duration = await getVideoDuration(destPath);
         }
 
-        if (fs.existsSync(localFilePath)) fs.unlinkSync(localFilePath);
-
-        if (!response || (!response.secure_url && !response.url)) {
-            throw new Error("Cloudinary response missing URL");
+        // Clean up temp file
+        if (fs.existsSync(localFilePath)) {
+            try {
+                fs.unlinkSync(localFilePath);
+            } catch {
+                // Ignore unlink errors
+            }
         }
+
+        const baseUrl = getBaseUrl();
+        const publicUrl = `${baseUrl}/${subDir}/${uniqueFileName}`;
 
         return {
-            ...response,
-            url: response.secure_url || response.url,
-            duration: response.duration || 0
+            url: publicUrl,
+            duration: duration || 0
         };
-
     } catch (error) {
-        console.error("Cloudinary upload failed, using local storage fallback:", error.message || error);
-        try {
-            const uploadsDir = "./public/uploads";
-            if (!fs.existsSync(uploadsDir)) {
-                fs.mkdirSync(uploadsDir, { recursive: true });
+        console.error("[Storage] Failed to store media:", error.message || error);
+        if (fs.existsSync(localFilePath)) {
+            try {
+                fs.unlinkSync(localFilePath);
+            } catch {
+                // Ignore
             }
-            const pathParts = localFilePath.split(/[\\/]/);
-            const fileName = pathParts[pathParts.length - 1];
-            const destPath = `${uploadsDir}/${fileName}`;
-            fs.copyFileSync(localFilePath, destPath);
-            if (fs.existsSync(localFilePath)) fs.unlinkSync(localFilePath);
-            const port = process.env.PORT || 8000;
-            return {
-                url: `http://localhost:${port}/uploads/${fileName}`,
-                duration: 0
-            };
-        } catch (fallbackError) {
-            if (fs.existsSync(localFilePath)) fs.unlinkSync(localFilePath);
-            return null;
         }
+        return null;
     }
-}
+};
 
-
-
-export {uploadOnCloudinary}
-
-
-/* 
-
-Multer = Gets file from client
-
-Cloudinary = Stores file permanently
-
-MongoDB = Stores Cloudinary URL
-
-*/
+export { uploadOnCloudinary, uploadOnCloudinary as uploadMedia };
