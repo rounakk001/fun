@@ -76,3 +76,12 @@ export const updateVideo = (videoId, formData) => {
 export const verifyPremiumAccessCode = (code) => {
   return axiosInstance.post('/videos/verify-premium-code', { code });
 };
+
+/**
+ * Move an existing video to the VIP Vault (Strictly video owner only, requires VIP passcode).
+ * @param {string} videoId
+ * @param {string} code
+ */
+export const moveVideoToPremium = (videoId, code) => {
+  return axiosInstance.post(`/videos/${videoId}/move-to-premium`, { code });
+};

@@ -5,6 +5,7 @@ import Sidebar from '../../components/Sidebar/Sidebar';
 import StatCard from '../../components/StatCard/StatCard';
 import { getDashboardStats, getDashboardVideos, togglePublishStatus } from '../../api/dashboard.api';
 import EditVideoModal from './EditVideoModal';
+import MoveToPremiumModal from '../../components/MoveToPremiumModal/MoveToPremiumModal';
 import './Dashboard.css';
 
 // SVG Icons for Stats
@@ -42,6 +43,7 @@ function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [togglingMap, setTogglingMap] = useState({});
   const [editingVideo, setEditingVideo] = useState(null);
+  const [movingVideo, setMovingVideo] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -169,6 +171,37 @@ function Dashboard() {
                                 >
                                   Edit
                                 </button>
+                                {!video.isPremium ? (
+                                  <button
+                                    className="btn btn-sm"
+                                    style={{
+                                      background: 'rgba(245, 197, 24, 0.15)',
+                                      border: '1px solid rgba(245, 197, 24, 0.5)',
+                                      color: '#f5c518',
+                                      fontWeight: '600'
+                                    }}
+                                    onClick={() => setMovingVideo(video)}
+                                    title="Move this video to the VIP Vault"
+                                  >
+                                    👑 Move to VIP
+                                  </button>
+                                ) : (
+                                  <span
+                                    style={{
+                                      fontSize: '0.74rem',
+                                      fontWeight: '700',
+                                      color: '#f5c518',
+                                      padding: '3px 7px',
+                                      borderRadius: '4px',
+                                      background: 'rgba(245, 197, 24, 0.1)',
+                                      border: '1px solid rgba(245, 197, 24, 0.3)',
+                                      whiteSpace: 'nowrap'
+                                    }}
+                                    title="This video is inside the VIP Vault"
+                                  >
+                                    👑 VIP Vault
+                                  </span>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -182,6 +215,20 @@ function Dashboard() {
           )}
         </main>
       </div>
+
+      {movingVideo && (
+        <MoveToPremiumModal
+          isOpen={Boolean(movingVideo)}
+          video={movingVideo}
+          onClose={() => setMovingVideo(null)}
+          onSuccess={(updatedVideo) => {
+            setVideos((prev) =>
+              prev.map((v) => (v._id === updatedVideo._id ? { ...v, isPremium: true } : v))
+            );
+            setMovingVideo(null);
+          }}
+        />
+      )}
 
       {editingVideo && (
         <EditVideoModal

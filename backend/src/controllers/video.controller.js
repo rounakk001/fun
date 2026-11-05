@@ -351,6 +351,48 @@ const verifyPremiumCode = asyncHandler(async (req, res) => {
         .json(new ApiResponse(200, { unlocked: true }, "Premium unlocked successfully!"))
 })
 
+const moveToPremium = asyncHandler(async (req, res) => {
+    const { videoId } = req.params
+    const { code } = req.body || {}
+
+    if (!isValidObjectId(videoId)) {
+        throw new ApiError(400, "Invalid video ID")
+    }
+
+    if (!req.user?._id) {
+        throw new ApiError(401, "Authentication required")
+    }
+
+    const video = await Video.findById(videoId)
+    if (!video) {
+        throw new ApiError(404, "Video not found")
+    }
+
+    // Strictly video owner only
+    if (video.owner.toString() !== req.user._id.toString()) {
+        throw new ApiError(403, "Unauthorized: Only the creator of this video can move it to the VIP Vault")
+    }
+
+    // Strictly re-verify VIP passcode
+    const validCode = (process.env.PREMIUM_SECRET_CODE || "7788").trim()
+    if (!code || code.trim().toLowerCase() !== validCode.toLowerCase()) {
+        throw new ApiError(401, "Invalid VIP access code. Please enter the correct code to unlock.")
+    }
+
+    video.isPremium = true
+    await video.save({ validateBeforeSave: false })
+
+    if (req.user?._id) {
+        await User.findByIdAndUpdate(req.user._id, { isPremiumUnlocked: true })
+    }
+
+    const updatedVideo = await Video.findById(video._id).populate("owner", "username fullName avatar")
+
+    return res
+        .status(200)
+        .json(new ApiResponse(200, updatedVideo, "Video successfully moved to VIP Vault!"))
+})
+
 export {
     getAllVideos,
     publishAVideo,
@@ -358,5 +400,6 @@ export {
     updateVideo,
     deleteVideo,
     togglePublishStatus,
-    verifyPremiumCode
+    verifyPremiumCode,
+    moveToPremium
 }

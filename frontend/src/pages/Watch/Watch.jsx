@@ -12,6 +12,7 @@ import { getChannelProfile } from '../../api/channel.api';
 import { toggleVideoLike } from '../../api/like.api';
 import CommentSection from '../../components/CommentSection/CommentSection';
 import SaveToPlaylistModal from '../../components/SaveToPlaylistModal/SaveToPlaylistModal';
+import MoveToPremiumModal from '../../components/MoveToPremiumModal/MoveToPremiumModal';
 import './Watch.css';
 
 /* ─── Helpers ───────────────────────────────────────────────────── */
@@ -91,6 +92,7 @@ function Watch() {
   
   // ── Playlist State ───────────────────────────────────────────
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showMoveToPremiumModal, setShowMoveToPremiumModal] = useState(false);
   const [isLikeLoading, setIsLikeLoading] = useState(false);
 
   // ── Related videos ────────────────────────────────────────────
@@ -622,6 +624,18 @@ function Watch() {
                       <PlaylistIcon />
                       <span>Save</span>
                     </button>
+                    {currentUser?._id && video?.owner && (currentUser._id === (video.owner._id || video.owner)) && !video.isPremium && (
+                      <button
+                        id="watch-move-premium-btn"
+                        className="watch-action-btn watch-action-btn--vip"
+                        aria-label="Move to VIP Vault"
+                        onClick={() => setShowMoveToPremiumModal(true)}
+                        title="Move this video to the VIP Vault (Owner only)"
+                      >
+                        <CrownIcon />
+                        <span>Move to VIP</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -744,6 +758,18 @@ function Watch() {
           userId={currentUser?._id}
         />
       )}
+
+      {showMoveToPremiumModal && video && (
+        <MoveToPremiumModal
+          isOpen={showMoveToPremiumModal}
+          video={video}
+          onClose={() => setShowMoveToPremiumModal(false)}
+          onSuccess={(updated) => {
+            setVideo((prev) => ({ ...prev, isPremium: true }));
+            showToast('Video successfully moved to VIP Vault! 👑');
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -855,6 +881,14 @@ function ChevronIcon({ expanded }) {
       style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 200ms ease' }}
     >
       <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
+function CrownIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f5c518" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14v2H5v-2z" fill="rgba(245, 197, 24, 0.2)" />
     </svg>
   );
 }
