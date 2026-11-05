@@ -336,7 +336,7 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
 
 const verifyPremiumCode = asyncHandler(async (req, res) => {
     const { code } = req.body || {}
-    const validCode = (process.env.PREMIUM_SECRET_CODE || "7788").trim()
+    const validCode = (process.env.PREMIUM_SECRET_CODE || "0000").trim()
 
     if (!code || code.trim().toLowerCase() !== validCode.toLowerCase()) {
         throw new ApiError(401, "Invalid access code. Please enter the correct code to unlock.")
@@ -374,7 +374,7 @@ const moveToPremium = asyncHandler(async (req, res) => {
     }
 
     // Strictly re-verify VIP passcode
-    const validCode = (process.env.PREMIUM_SECRET_CODE || "7788").trim()
+    const validCode = (process.env.PREMIUM_SECRET_CODE || "0000").trim()
     if (!code || code.trim().toLowerCase() !== validCode.toLowerCase()) {
         throw new ApiError(401, "Invalid VIP access code. Please enter the correct code to unlock.")
     }
