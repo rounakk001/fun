@@ -187,9 +187,8 @@ export const getTrendingFeed = asyncHandler(async (req, res) => {
 
 export const getShortsFeed = asyncHandler(async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 10, 30);
-  const userId = req.user?._id?.toString() || null;
   const isPremium = req.query.isPremium === "true" || req.query.isPremium === true;
-  const currentShortId = req.query.currentShortId || null;
+  const excludeIdsParam = req.query.excludeIds || "";
 
   if (isPremium) {
     if (!req.user) {
@@ -202,70 +201,34 @@ export const getShortsFeed = asyncHandler(async (req, res) => {
 
   const premiumFilter = isPremium ? { isPremium: true } : { isPremium: { $ne: true } };
 
-  let recVideoIds = [];
-  let strategy = "mongodb_fallback";
+  // Parse excluded IDs to seamlessly stream next latest shorts while scrolling
+  const rawList = Array.isArray(excludeIdsParam)
+    ? excludeIdsParam
+    : typeof excludeIdsParam === "string"
+    ? excludeIdsParam.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
 
-  if (currentShortId) {
-    // 1. Query ML recommendation service for similar relatable shorts
-    const mlRes = await mlClient.getSimilarVideos(currentShortId, userId, limit);
-    if (mlRes && mlRes.recommendations && mlRes.recommendations.length > 0) {
-      recVideoIds = mlRes.recommendations
-        .map((r) => r.video_id)
-        .filter((id) => id !== currentShortId && mongoose.Types.ObjectId.isValid(id));
-      strategy = mlRes.strategy || "hybrid_ml";
-    }
-  } else {
-    // Initial feed: query home recommendation from ML
-    const mlRes = await mlClient.getHomeRecommendations(userId, limit);
-    if (mlRes && mlRes.recommendations && mlRes.recommendations.length > 0) {
-      recVideoIds = mlRes.recommendations
-        .map((r) => r.video_id)
-        .filter((id) => mongoose.Types.ObjectId.isValid(id));
-      strategy = mlRes.strategy || "hybrid_ml";
-    }
+  const excludeObjectIds = rawList
+    .filter((id) => mongoose.Types.ObjectId.isValid(id))
+    .map((id) => new mongoose.Types.ObjectId(id));
+
+  const query = {
+    isPublished: true,
+    isShort: true,
+    ...premiumFilter
+  };
+
+  if (excludeObjectIds.length > 0) {
+    query._id = { $nin: excludeObjectIds };
   }
 
-  // Hydrate from MongoDB with isShort: true and strict premiumFilter
-  const objectIds = recVideoIds.map((id) => new mongoose.Types.ObjectId(id));
-  let shorts = [];
+  // Strict latest first: newest createdAt first
+  const shorts = await Video.find(query)
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .populate("owner", "fullName username avatar");
 
-  if (objectIds.length > 0) {
-    const found = await Video.find({
-      _id: { $in: objectIds },
-      isPublished: true,
-      isShort: true,
-      ...premiumFilter
-    }).populate("owner", "fullName username avatar");
-
-    const foundMap = new Map(found.map((v) => [v._id.toString(), v]));
-    for (const idStr of recVideoIds) {
-      if (foundMap.has(idStr)) {
-        shorts.push(foundMap.get(idStr));
-      }
-    }
-  }
-
-  // Backfill if fewer than limit
-  if (shorts.length < limit) {
-    const existingIds = new Set(shorts.map((s) => s._id.toString()));
-    if (currentShortId) existingIds.add(currentShortId);
-
-    const query = {
-      isPublished: true,
-      isShort: true,
-      _id: { $nin: Array.from(existingIds).map((id) => new mongoose.Types.ObjectId(id)) },
-      ...premiumFilter
-    };
-
-    const fallbackShorts = await Video.find(query)
-      .sort({ createdAt: -1 })
-      .limit(limit - shorts.length)
-      .populate("owner", "fullName username avatar");
-
-    shorts = [...shorts, ...fallbackShorts];
-  }
-
-  // Enrich with likesCount, isLiked, isDisliked, commentsCount
+  // Enrich with likesCount, isLiked, isDisliked, commentsCount, isSubscribed
   const userObjectId = req.user?._id ? new mongoose.Types.ObjectId(req.user._id) : null;
   const enrichedShorts = await Promise.all(
     shorts.map(async (doc) => {
@@ -308,9 +271,9 @@ export const getShortsFeed = asyncHandler(async (req, res) => {
       {
         shorts: enrichedShorts,
         total: enrichedShorts.length,
-        strategy
+        strategy: "latest_chronological"
       },
-      "Shorts feed fetched successfully"
+      "Latest shorts feed fetched successfully"
     )
   );
 });

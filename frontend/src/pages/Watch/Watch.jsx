@@ -143,6 +143,21 @@ function Watch() {
   // Flag: was the last navigation triggered by autoplay-next?
   const autoplayedRef = useRef(false);
 
+  // Autoplay toggle state (persisted in localStorage, default true)
+  const [autoplayEnabled, setAutoplayEnabled] = useState(() => {
+    return localStorage.getItem('yeonix_autoplay') !== 'false';
+  });
+  const [autoplayCountdown, setAutoplayCountdown] = useState(null);
+  const countdownTimerRef = useRef(null);
+
+  const handleToggleAutoplay = () => {
+    setAutoplayEnabled((prev) => {
+      const nextVal = !prev;
+      localStorage.setItem('yeonix_autoplay', String(nextVal));
+      return nextVal;
+    });
+  };
+
   // When videoId changes, mark it as played. If the change came from
   // a manual click (not autoplay), clear the played history so the
   // user starts a fresh sequence from the new video.
@@ -153,7 +168,49 @@ function Watch() {
     }
     playedSetRef.current.add(videoId);
     autoplayedRef.current = false; // reset the flag
+    setAutoplayCountdown(null);
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
   }, [videoId]);
+
+  // ── Autoplay Countdown Timer Effect ─────────────────────────────
+  useEffect(() => {
+    if (!autoplayCountdown) {
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+      return;
+    }
+
+    countdownTimerRef.current = setInterval(() => {
+      setAutoplayCountdown((prev) => {
+        if (!prev) return null;
+        if (prev.seconds <= 1) {
+          clearInterval(countdownTimerRef.current);
+          autoplayedRef.current = true;
+          navigate(`/watch/${prev.nextVideo._id}`);
+          return null;
+        }
+        return { ...prev, seconds: prev.seconds - 1 };
+      });
+    }, 1000);
+
+    return () => {
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    };
+  }, [autoplayCountdown, navigate]);
+
+  const handlePlayNow = () => {
+    if (autoplayCountdown?.nextVideo) {
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+      const nextId = autoplayCountdown.nextVideo._id;
+      setAutoplayCountdown(null);
+      autoplayedRef.current = true;
+      navigate(`/watch/${nextId}`);
+    }
+  };
+
+  const handleCancelAutoplay = () => {
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    setAutoplayCountdown(null);
+  };
 
   // ── Autoplay with muted fallback ──────────────────────────────
   // Called once the video element's src is ready (onCanPlay).
@@ -174,24 +231,42 @@ function Watch() {
     }
   }, []);
 
-  // ── Autoplay next video when current one ends ─────────────────
-  // Reads from refs (not state) so it always has the current values
-  // regardless of when React re-renders. Advances to the first video
-  // in the related list that hasn't been played in this session.
+  // ── ML Service-Based Autoplay Next Video ──────────────────────
+  // Reads from refs (not state) so it always has the current values.
+  // Advances to the top ML-recommended unplayed video.
   const handleVideoEnded = useCallback(() => {
+    if (!autoplayEnabled) return;
+
     const currentId = videoIdRef.current;
     const list = relatedRef.current;
     const played = playedSetRef.current;
 
-    // Find first unplayed video that isn't the one currently showing
+    // Find first unplayed ML-recommended video that isn't the one currently showing
     const next = list.find((v) => v._id !== currentId && !played.has(v._id));
 
+    const triggerNext = (nextVid) => {
+      if (!nextVid) return;
+      setAutoplayCountdown({ seconds: 4, nextVideo: nextVid });
+    };
+
     if (next) {
-      autoplayedRef.current = true; // signal this is an autoplay transition
-      navigate(`/watch/${next._id}`);
+      triggerNext(next);
+    } else {
+      // Actively query ML service if current list is exhausted or not yet populated
+      const isPremium = video?.isPremium === true;
+      getSimilarVideos(currentId, { limit: 6, ...(isPremium ? { isPremium: 'true' } : {}) })
+        .then((res) => {
+          const recs = res.data?.data?.recommendations || [];
+          const candidate = recs.find((v) => v._id !== currentId && !played.has(v._id)) || recs[0];
+          if (candidate) {
+            triggerNext(candidate);
+          }
+        })
+        .catch((err) => {
+          console.warn('[Watch] Failed to fetch ML fallback for autoplay', err);
+        });
     }
-    // No unplayed videos left — do nothing. Don't loop, don't error.
-  }, [navigate]); // stable: only depends on navigate (which is also stable)
+  }, [autoplayEnabled, video?.isPremium]);
 
   // ── Fetch video ───────────────────────────────────────────────
   useEffect(() => {
@@ -407,6 +482,49 @@ function Watch() {
                   >
                     Your browser does not support HTML5 video.
                   </video>
+
+                  {autoplayCountdown && autoplayCountdown.nextVideo && (
+                    <div className="watch-autoplay-overlay">
+                      <div className="watch-autoplay-card">
+                        <div className="watch-autoplay-card__badge">
+                          <span className="watch-autoplay-sparkle">✨</span>
+                          <span>ML Recommended Next</span>
+                        </div>
+                        <div className="watch-autoplay-card__timer">
+                          Playing next video in <strong>{autoplayCountdown.seconds}s</strong>
+                        </div>
+                        <div className="watch-autoplay-card__preview">
+                          <img
+                            src={autoplayCountdown.nextVideo.thumbnail}
+                            alt={autoplayCountdown.nextVideo.title}
+                            className="watch-autoplay-card__thumb"
+                          />
+                          <div className="watch-autoplay-card__details">
+                            <p className="watch-autoplay-card__title">{autoplayCountdown.nextVideo.title}</p>
+                            <p className="watch-autoplay-card__channel">
+                              {autoplayCountdown.nextVideo.owner?.fullName || autoplayCountdown.nextVideo.owner?.username}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="watch-autoplay-card__actions">
+                          <button
+                            type="button"
+                            className="btn-autoplay-cancel"
+                            onClick={handleCancelAutoplay}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-autoplay-play"
+                            onClick={handlePlayNow}
+                          >
+                            Play Now ▶
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* ── Title (with optional premium badge) ─── */}
@@ -585,7 +703,22 @@ function Watch() {
 
               {/* ── Related videos sidebar ──────────────────────── */}
               <aside className="watch-related" aria-label="Related videos">
-                <h2 className="watch-related__heading">Up next</h2>
+                <div className="watch-related__header">
+                  <h2 className="watch-related__heading">Up next</h2>
+                  <div className="watch-autoplay-toggle">
+                    <span className="watch-autoplay-toggle-text">Autoplay</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={autoplayEnabled}
+                      className={`watch-autoplay-switch ${autoplayEnabled ? 'watch-autoplay-switch--on' : ''}`}
+                      onClick={handleToggleAutoplay}
+                      title={autoplayEnabled ? 'ML Autoplay enabled' : 'Autoplay disabled'}
+                    >
+                      <span className="watch-autoplay-switch-dot" />
+                    </button>
+                  </div>
+                </div>
                 <div className="watch-related__list">
                   {relatedLoading
                     ? Array.from({ length: 4 }).map((_, i) => (

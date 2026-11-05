@@ -73,15 +73,16 @@ function Shorts() {
     loadInitialShorts();
   }, [loadInitialShorts]);
 
-  // ── Fetch Next Relatable Shorts via ML Service ─────────────────────
-  const loadMoreRelatableShorts = useCallback(async (currentShortId) => {
+  // ── Fetch Next Latest Shorts While Scrolling ───────────────────────
+  const loadMoreLatestShorts = useCallback(async () => {
     if (isFetchingMore) return;
     setIsFetchingMore(true);
 
     try {
+      const excludeIds = Array.from(fetchedIdsRef.current).join(',');
       const res = await getShortsFeed({
         isPremium,
-        currentShortId,
+        excludeIds,
         limit: 8
       });
       const newDocs = res.data?.data?.shorts || [];
@@ -92,7 +93,7 @@ function Shorts() {
         setShorts((prev) => [...prev, ...filtered]);
       }
     } catch (err) {
-      console.error('[Shorts] Failed to fetch relatable shorts', err);
+      console.error('[Shorts] Failed to fetch more latest shorts', err);
     } finally {
       setIsFetchingMore(false);
     }
@@ -111,15 +112,15 @@ function Shorts() {
 
       if (newIndex !== activeIndex && newIndex >= 0 && newIndex < shorts.length) {
         setActiveIndex(newIndex);
-        if (newIndex >= shorts.length - 2 && shorts[newIndex]?._id) {
-          loadMoreRelatableShorts(shorts[newIndex]._id);
+        if (newIndex >= shorts.length - 2) {
+          loadMoreLatestShorts();
         }
       }
     };
 
     container.addEventListener('scroll', handleScroll, { passive: true });
     return () => container.removeEventListener('scroll', handleScroll);
-  }, [activeIndex, shorts, loadMoreRelatableShorts]);
+  }, [activeIndex, shorts.length, loadMoreLatestShorts]);
 
   // ── Keyboard Navigation (ArrowUp / ArrowDown / m) ──────────────────
   useEffect(() => {
